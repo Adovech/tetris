@@ -3,39 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>True Co-op Tetris Multiplayer</title>
+    <title>Tricky Towers Clone Co-op</title>
     <style>
-        body { background: #1a1a24; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-        h1 { margin-bottom: 5px; color: #00f0ff; }
-        #status { font-size: 1.1em; color: #ffdd67; margin-bottom: 10px; }
-        #share-url { background: #252538; padding: 8px; border-radius: 5px; color: #00f0ff; font-family: monospace; display: inline-block; margin-bottom: 20px; }
-        .game-container { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; }
-        .player-board { background: #252538; padding: 15px; border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
-        canvas { border: 3px solid #3d3d5c; background: #0b0b12; border-radius: 4px; }
-        .controls { margin-top: 25px; color: #aaa; font-size: 0.9em; background: #252538; display: inline-block; padding: 10px 20px; border-radius: 20px; }
+        body { background: #14141f; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; overflow-x: hidden; }
+        h1 { color: #00ffcc; margin: 5px 0; font-size: 24px; text-shadow: 0 0 10px rgba(0,255,204,0.3); }
+        #status { color: #ffcc00; font-weight: bold; margin-bottom: 5px; }
+        #share-box { background: #222235; padding: 8px; border-radius: 6px; display: inline-block; margin-bottom: 15px; border: 1px solid #333350; }
+        #share-url { color: #00ffcc; font-family: monospace; font-size: 14px; }
+        .game-container { display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; }
+        .player-board { background: #1c1c2d; padding: 10px; border-radius: 12px; border: 2px solid #2d2d44; }
+        .canvas-container { position: relative; width: 320px; height: 550px; background: #0d0d18; border-radius: 6px; overflow: hidden; }
+        canvas { position: absolute; top: 0; left: 0; }
+        .controls-info { margin-top: 15px; font-size: 13px; color: #aaa; background: #1c1c2d; padding: 8px 20px; border-radius: 20px; display: inline-block; }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 </head>
 <body>
 
-    <h1>Кооперативний Тетріс Онлайн</h1>
-    <div id="status">Ініціалізація...</div>
-    <div id="share-link-container" style="display:none;">
-        <div>Скинь це посилання другу для спільної гри:</div>
-        <div id="share-url"></div>
-    </div>
-    
+    <h1>Tricky Вежі Онлайн (Co-op Фізика)</h1>
+    <div id="status">Підключення...</div>
+    <div id="share-box">Посилай другу: <span id="share-url"></span></div>
+
     <div class="game-container">
         <div class="player-board">
             <h3 id="local-title">Ти</h3>
-            <canvas id="tetris-local" width="240" height="400"></canvas>
+            <div id="canvas-local" class="canvas-container"></div>
         </div>
         <div class="player-board">
-            <h3 id="remote-title">Очікування друга...</h3>
-            <canvas id="tetris-remote" width="240" height="400"></canvas>
+            <h3 id="remote-title">Очікування суперника...</h3>
+            <div id="canvas-remote" class="canvas-container"></div>
         </div>
     </div>
 
-    <div class="controls">🎮 <b>Керування:</b> Стрілки Вліво / Вправо / Вниз. Стрілка "Вгору" — поворот фігури.</div>
+    <div class="controls-info">🕹️ <b>Керування:</b> Стрілки Вліво / Вправо. Стрілка "Вгору" — крутити блок. <b>Пробіл</b> — різко кинути вниз (Drop).</div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
@@ -47,154 +47,176 @@
             projectId: "monopoliya-dbc97",
             storageBucket: "monopoliya-dbc97.firebasestorage.app",
             messagingSenderId: "939364818613",
-            appId: "1:939364818613:web:8082c7b5f81b3dc76328fc",
-            measurementId: "G-3S79MNCZ67"
+            appId: "1:939364818613:web:8082c7b5f81b3dc76328fc"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // Логіка генерації унікальної кімнати
         const urlParams = new URLSearchParams(window.location.search);
-        let roomId = urlParams.get('room');
+        let roomId = urlParams.get('room') || Math.random().toString(36).substring(2, 7);
+        if (!urlParams.get('room')) window.location.search = `?room=${roomId}`;
+        document.getElementById('share-url').innerText = window.location.href;
+
+        let playerId = null, opponentId = null;
         
-        if (!roomId) {
-            roomId = Math.random().toString(36).substring(2, 7);
-            window.location.search = `?room=${roomId}`;
+        // Модулі Matter.js
+        const { Engine, Render, Runner, Bodies, Composite, Body } = Matter;
+
+        // Конфігурація світів
+        const GAME_WIDTH = 320;
+        const GAME_HEIGHT = 550;
+
+        function createPhysicsWorld(elementId, isLocal) {
+            const engine = Engine.create({ gravity: { y: 1.2 } }); // Реалістична гравітація
+            const render = Render.create({
+                element: document.getElementById(elementId),
+                engine: engine,
+                options: { width: GAME_WIDTH, height: GAME_HEIGHT, wireframes: false, background: '#0d0d18' }
+            });
+
+            // Платформа-основа (як в Tricky Towers, на яку ставимо вежу)
+            const platform = Bodies.rectangle(GAME_WIDTH / 2, GAME_HEIGHT - 40, 140, 20, { 
+                isStatic: true, 
+                render: { fillStyle: '#ffcc00' } 
+            });
+            Composite.add(engine.world, platform);
+
+            Render.run(render);
+            const runner = Runner.create();
+            Runner.run(runner, engine);
+
+            return { engine, platform };
         }
 
-        document.getElementById('share-url').innerText = window.location.href;
-        document.getElementById('share-link-container').style.display = 'block';
+        const localWorld = createPhysicsWorld('canvas-local', true);
+        const remoteWorld = createPhysicsWorld('canvas-remote', false);
 
-        let playerId = null;
-        let opponentId = null;
+        let currentControlledBody = null;
+        const blockColors = ['#ff0055', '#00ffcc', '#9900ff', '#ffaa00', '#00ff55'];
 
-        // Canvas налаштування
-        const localCanvas = document.getElementById('tetris-local');
-        const localCtx = localCanvas.getContext('2d');
-        const remoteCanvas = document.getElementById('tetris-remote');
-        const remoteCtx = remoteCanvas.getContext('2d');
+        // Створення нового падаючого блоку
+        function spawnBlock() {
+            const x = GAME_WIDTH / 2;
+            const y = 50;
+            const types = ['I', 'O', 'T', 'L'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            let body;
 
-        localCtx.scale(20, 20);
-        remoteCtx.scale(20, 20);
+            const color = blockColors[Math.floor(Math.random() * blockColors.length)];
 
-        const tetramino = [[0,1,0],[1,1,1],[0,0,0]];
-        let playerState = { pos: { x: 3, y: 0 }, matrix: tetramino };
-        let remoteState = { pos: { x: 3, y: 0 }, matrix: tetramino };
-
-        // Захищений розподіл місць у кімнаті за допомогою Транзакції Firebase
-        const roomUsersRef = ref(db, `rooms/${roomId}/users`);
-        
-        runTransaction(roomUsersRef, (currentUsers) => {
-            if (currentUsers === null) {
-                return { p1: true };
-            } else if (!currentUsers.p1) {
-                currentUsers.p1 = true;
-                return currentUsers;
-            } else if (!currentUsers.p2) {
-                currentUsers.p2 = true;
-                return currentUsers;
+            if (type === 'I') body = Bodies.rectangle(x, y, 120, 30, { render: { fillStyle: color } });
+            else if (type === 'O') body = Bodies.rectangle(x, y, 60, 60, { render: { fillStyle: color } });
+            else if (type === 'T') {
+                body = Bodies.fromVertices(x, y, [[{x:0,y:0},{x:90,y:0},{x:90,y:30},{x:60,y:30},{x:60,y:60},{x:30,y:60},{x:30,y:30},{x:0,y:30}]], { render: { fillStyle: color } });
+            } else {
+                body = Bodies.rectangle(x, y, 40, 40, { render: { fillStyle: color } });
             }
-            return; // Кімната повна
-        }).then((result) => {
-            if (!result.committed) {
-                document.getElementById('status').innerText = "Кімната вже заповнена! Створіть іншу.";
+
+            // Поки ми керуємо блоком, вимикаємо для нього гравітацію і колізії, щоб він вільно рухався вгорі
+            Body.setStatic(body, true);
+            Composite.add(localWorld.engine.world, body);
+            currentControlledBody = body;
+        }
+
+        // Перетворення масиву тіл для відправки в Firebase (тільки потрібні координати та кути)
+        function syncWorldToFirebase() {
+            if (!playerId) return;
+            const bodies = Composite.allBodies(localWorld.engine.world);
+            const syncData = bodies.map(b => {
+                return {
+                    x: b.position.x,
+                    y: b.position.y,
+                    angle: b.angle,
+                    width: b.bounds.max.x - b.bounds.min.x,
+                    height: b.bounds.max.y - b.bounds.min.y,
+                    isStatic: b.isStatic,
+                    color: b.render.fillStyle
+                };
+            });
+            set(ref(db, `rooms/${roomId}/${playerId}`), syncData);
+        }
+
+        // Візуалізація світу суперника на основі його даних з Firebase
+        function renderRemoteWorld(data) {
+            // Очищаємо всі старі динамічні блоки суперника (крім статичної платформи)
+            const allRemoteBodies = Composite.allBodies(remoteWorld.engine.world);
+            allRemoteBodies.forEach(b => {
+                if (!b.isStatic) Composite.remove(remoteWorld.engine.world, b);
+            });
+
+            // Малюємо нові блоки суперника
+            data.forEach(bData => {
+                if (bData.isStatic && bData.y > GAME_HEIGHT - 60) return; // Пропускаємо основу, вона вже є
+                const newBody = Bodies.rectangle(bData.x, bData.y, bData.width, bData.height, {
+                    isStatic: bData.isStatic,
+                    angle: bData.angle,
+                    render: { fillStyle: bData.color || '#ff007f' }
+                });
+                Composite.add(remoteWorld.engine.world, newBody);
+            });
+        }
+
+        // Логіка підключення кімнати
+        runTransaction(ref(db, `rooms/${roomId}/users`), (curr) => {
+            if (!curr) return { p1: true };
+            if (!curr.p1) { curr.p1 = true; return curr; }
+            if (!curr.p2) { curr.p2 = true; return curr; }
+            return;
+        }).then((res) => {
+            if (!res.committed) {
+                document.getElementById('status').innerText = "Кімната заповнена!";
                 return;
             }
+            const u = res.snapshot.val();
+            playerId = u.p2 ? 'p2' : 'p1';
+            opponentId = playerId === 'p1' ? 'p2' : 'p1';
 
-            const users = result.snapshot.val();
-            if (users.p2 && !playerId) {
-                playerId = 'p2';
-                opponentId = 'p1';
-            } else {
-                playerId = 'p1';
-                opponentId = 'p2';
-            }
+            document.getElementById('status').innerText = `Граємо! Кімната: ${roomId} | Ти: ${playerId.toUpperCase()}`;
+            document.getElementById('local-title').innerText = `Твоя Вежа (${playerId.toUpperCase()})`;
+            document.getElementById('remote-title').innerText = `Вежа суперника (${opponentId.toUpperCase()})`;
 
-            initGame();
-        });
-
-        function initGame() {
-            document.getElementById('status').innerText = `Кімната: ${roomId} | Твій юніт: ${playerId.toUpperCase()}`;
-            document.getElementById('local-title').innerText = `Ти (${playerId.toUpperCase()})`;
-            document.getElementById('remote-title').innerText = `Суперник (${opponentId.toUpperCase()})`;
-
-            // Очищення бази при виході з гри
             onDisconnect(ref(db, `rooms/${roomId}/${playerId}`)).remove();
             onDisconnect(ref(db, `rooms/${roomId}/users/${playerId}`)).remove();
 
-            // Слухаємо координати суперника
-            onValue(ref(db, `rooms/${roomId}/${opponentId}`), (snapshot) => {
-                const data = snapshot.val();
-                if (data) {
-                    remoteState = data;
-                    updateScreen();
-                }
+            // Слухаємо суперника
+            onValue(ref(db, `rooms/${roomId}/${opponentId}`), (snap) => {
+                if (snap.exists()) renderRemoteWorld(snap.val());
             });
 
-            // Автоматичне падіння фігурки вниз (ігровий цикл)
+            // Старт гри
+            spawnBlock();
+
+            // Керування
+            document.addEventListener('keydown', e => {
+                if (!currentControlledBody) return;
+
+                if (e.keyCode === 37) { // Вліво
+                    Body.setPosition(currentControlledBody, { x: currentControlledBody.position.x - 20, y: currentControlledBody.position.y });
+                }
+                if (e.keyCode === 39) { // Вправо
+                    Body.setPosition(currentControlledBody, { x: currentControlledBody.position.x + 20, y: currentControlledBody.position.y });
+                }
+                if (e.keyCode === 38) { // Вгору (Поворот)
+                    Body.setAngle(currentControlledBody, currentControlledBody.angle + Math.PI / 4);
+                }
+                if (e.keyCode === 32) { // ПРОБІЛ — відпустити у вільне падіння з фізикою
+                    Body.setStatic(currentControlledBody, false);
+                    currentControlledBody = null;
+                    
+                    // Через секунду спавнимо наступний блок
+                    setTimeout(() => {
+                        spawnBlock();
+                    }, 1200);
+                }
+                syncWorldToFirebase();
+            });
+
+            // Постійний стрім фізики в базу (балансування вежі)
             setInterval(() => {
-                playerState.pos.y++;
-                if (playerState.pos.y > 18) { // Якщо вперлися в дно — ресет наверх
-                    playerState.pos.y = 0;
-                    playerState.pos.x = Math.floor(Math.random() * 6);
-                }
-                syncAndRender();
-            }, 500);
-
-            // Керування клавішами
-            document.addEventListener('keydown', event => {
-                if (event.keyCode === 37) playerState.pos.x = Math.max(0, playerState.pos.x - 1);
-                if (event.keyCode === 39) playerState.pos.x = Math.min(7, playerState.pos.x + 1);
-                if (event.keyCode === 40) playerState.pos.y = Math.min(18, playerState.pos.y + 1);
-                if (event.keyCode === 38) rotate(playerState.matrix);
-
-                syncAndRender();
-            });
-
-            syncAndRender();
-        }
-
-        function rotate(matrix) {
-            for (let y = 0; y < matrix.length; ++y) {
-                for (let x = 0; x < y; ++x) {
-                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
-                }
-            }
-            matrix.forEach(row => row.reverse());
-        }
-
-        function syncAndRender() {
-            if (!playerId) return;
-            set(ref(db, `rooms/${roomId}/${playerId}`), playerState);
-            updateScreen();
-        }
-
-        function drawMatrix(ctx, matrix, offset, color) {
-            matrix.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) {
-                        ctx.fillStyle = color;
-                        ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
-                        ctx.strokeStyle = '#000';
-                        ctx.lineWidth = 0.05;
-                        ctx.strokeRect(x + offset.x, y + offset.y, 1, 1);
-                    }
-                });
-            });
-        }
-
-        function updateScreen() {
-            localCtx.fillStyle = '#0b0b12';
-            localCtx.fillRect(0, 0, localCanvas.width, localCanvas.height);
-            drawMatrix(localCtx, playerState.matrix, playerState.pos, '#00f0ff');
-
-            remoteCtx.fillStyle = '#0b0b12';
-            remoteCtx.fillRect(0, 0, remoteCanvas.width, remoteCanvas.height);
-            if (remoteState && remoteState.pos) {
-                drawMatrix(remoteCtx, remoteState.matrix || tetramino, remoteState.pos, '#ff007f');
-            }
-        }
+                syncWorldToFirebase();
+            }, 100);
+        });
     </script>
 </body>
 </html>
