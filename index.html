@@ -3,61 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Хто хоче стати мільйонером? МЕГА-кооп</title>
+    <title>3D Multiplayer Tanks via Firebase</title>
     <style>
-        body { background: #020230; color: #fff; font-family: 'Arial', sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .game-box { max-width: 950px; margin: 0 auto; background: radial-gradient(circle, #08085e 0%, #020230 100%); padding: 30px; border: 3px solid #00f0ff; border-radius: 20px; box-shadow: 0 0 30px rgba(0,240,255,0.3); }
-        h1 { color: #ffcc00; text-shadow: 0 0 10px rgba(255,204,0,0.6); font-size: 28px; margin-top: 0; }
-        #status { color: #00f0ff; font-weight: bold; margin-bottom: 15px; font-size: 18px; }
-        #share-box { background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px; font-size: 14px; margin-bottom: 25px; display: inline-block; }
-        #share-url { color: #ffcc00; font-family: monospace; font-weight: bold; }
-        
-        .main-content { display: flex; gap: 20px; justify-content: space-between; margin-top: 20px; flex-wrap: wrap; }
-        .quiz-area { flex: 2; min-width: 300px; }
-        .money-list { flex: 1; min-width: 220px; background: #040440; padding: 15px; border-radius: 10px; border: 1px solid #33338c; text-align: left; }
-        
-        .money-step { padding: 5px 10px; font-weight: bold; color: #ffaa00; display: flex; justify-content: space-between; border-radius: 4px; font-size: 14px; margin-bottom: 2px; }
-        .money-step.active { background: #ffcc00; color: #000; }
-        .money-step.safe { color: #fff; border-left: 4px solid #00f0ff; }
-
-        .question-text { background: #040440; border: 2px solid #33338c; padding: 25px; border-radius: 30px; font-size: 20px; margin-bottom: 25px; min-height: 60px; display: flex; align-items: center; justify-content: center; line-height: 1.4; }
-        
-        .answers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .btn-answer { background: #040440; border: 2px solid #33338c; color: white; padding: 15px; font-size: 16px; border-radius: 30px; cursor: pointer; text-align: left; transition: 0.2s; position: relative; }
-        .btn-answer:hover { background: #10107a; border-color: #00f0ff; }
-        .btn-answer span { color: #ffcc00; font-weight: bold; margin-right: 10px; }
-        .btn-answer:disabled { opacity: 0.4; cursor: not-allowed; }
+        body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: sans-serif; color: #fff; }
+        #ui { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid #00f0ff; }
+        #status { color: #ffcc00; font-weight: bold; margin-bottom: 5px; }
+        #share-url { color: #00f0ff; font-family: monospace; font-size: 12px; word-break: break-all; }
+        .controls-hint { font-size: 12px; color: #aaa; margin-top: 10px; }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
 
-    <div class="game-box">
-        <h1>Oнлайн-Вікторина: Хто хоче стати мільйонером?</h1>
-        <div id="status">Завантаження та підключення до твоєї бази...</div>
-        <div id="share-box">🔗 Надішли другу для спільної гри: <span id="share-url"></span></div>
-
-        <div class="main-content">
-            <div class="quiz-area">
-                <div class="question-text" id="question">Очікування підключення гравців...</div>
-                <div class="answers-grid">
-                    <button class="btn-answer" onclick="makeAnswer(0)" id="btn0"><span>A:</span> <text id="txt0"></text></button>
-                    <button class="btn-answer" onclick="makeAnswer(1)" id="btn1"><span>B:</span> <text id="txt1"></text></button>
-                    <button class="btn-answer" onclick="makeAnswer(2)" id="btn2"><span>C:</span> <text id="txt2"></text></button>
-                    <button class="btn-answer" onclick="makeAnswer(3)" id="btn3"><span>D:</span> <text id="txt3"></text></button>
-                </div>
-            </div>
-
-            <div class="money-list" id="money-scale">
-                <!-- Заповниться динамічно -->
-            </div>
-        </div>
+    <div id="ui">
+        <h2>3D Танчики Онлайн 🚀</h2>
+        <div id="status">Підключення до бази...</div>
+        <div>Скинь лінк другу: <span id="share-url"></span></div>
+        <div class="controls-hint">⌨️ <b>Керування:</b> Стрілки або WASD — рух. <b>Пробіл</b> — вогонь!</div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
         import { getDatabase, ref, set, onValue, onDisconnect, runTransaction } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
-        // ТВОЯ ДАТАБАЗА MONOPOLIYA
         const firebaseConfig = {
             apiKey: "AIzaSyA_l8PXKFOi8xD1-49rZOtsH1I3uYOrwfs",
             authDomain: "monopoliya-dbc97.firebaseapp.com",
@@ -75,73 +43,113 @@
         if (!urlParams.get('room')) window.location.search = `?room=${roomId}`;
         document.getElementById('share-url').innerText = window.location.href;
 
-        // ВЕЛИКА БАЗА ДАНИХ ПИТАНЬ (40 штук)
-        const allQuestionsPool = [
-            { q: "Яка планета є третьою від Сонця?", a: ["Марс", "Венера", "Земля", "Юпітер"], correct: 2 },
-            { q: "Скільки кутів у трикутника?", a: ["4", "3", "5", "6"], correct: 1 },
-            { q: "Який метал є рідким за кімнатної температури?", a: ["Залізо", "Ртуть", "Мідь", "Свинець"], correct: 1 },
-            { q: "Хто написав «Кобзар»?", a: ["Іван Франко", "Леся Українка", "Тарас Шевченко", "Михайло Коцюбинський"], correct: 2 },
-            { q: "Яка столиця України?", a: ["Львів", "Харків", "Київ", "Одеса"], correct: 2 },
-            { q: "Який океан найбільший на Землі?", a: ["Атлантичний", "Індійський", "Тихий", "Північно-Льодовитий"], correct: 2 },
-            { q: "Скільки хвилин в одній годині?", a: ["50", "60", "100", "12"], correct: 1 },
-            { q: "Який колір вийде, якщо змішати синій і жовтий?", a: ["Зелений", "Фіолетовий", "Помаранчевий", "Коричневий"], correct: 0 },
-            { q: "Яка тварина вважається царем звірів?", a: ["Тигр", "Ведмідь", "Лев", "Слон"], correct: 2 },
-            { q: "Який птах є символом миру?", a: ["Орел", "Голуб", "Ворона", "Лелека"], correct: 1 },
-            { q: "Яка мова програмування найчастіше використовується для стилізації веб-сторінок?", a: ["HTML", "Python", "CSS", "C++"], correct: 2 },
-            { q: "Яка найдовша річка у світі?", a: ["Амазонка", "Ніл", "Міссісіпі", "Дніпро"], correct: 0 },
-            { q: "Який хімічний елемент позначається літерою O?", a: ["Золото", "Осмій", "Kисень", "Водень"], correct: 2 },
-            { q: "Скільки континентів на Землі?", a: ["5", "6", "7", "4"], correct: 1 },
-            { q: "Яка країна подарувала США Статую Свободи?", a: ["Франція", "Велика Британія", "Німеччина", "Італія"], correct: 0 },
-            { q: "Хто відкрив закон всесвітнього тяжіння?", a: ["Альберт Ейнштейн", "Ісаак Ньютон", "Галілео Галілей", "Рене Декарт"], correct: 1 },
-            { q: "В якому році вибухнув Чорнобильський АЕС?", a: ["1984", "1986", "1989", "1991"], correct: 1 },
-            { q: "Яка грошова одиниця Японії?", a: ["Юань", "Вона", "Єна", "Долар"], correct: 2 },
-            { q: "Який орган людського тіла виробляє інсулін?", a: ["Печінка", "Шлунок", "Підшлункова залоза", "Нирки"], correct: 2 },
-            { q: "Хто створив картину 'Мона Ліза'?", a: ["Пабло Пікассо", "Леонардо да Вінчі", "Вінсент ван Гог", "Мікеланджело"], correct: 1 },
-            { q: "Яка пустеля є найбільшою у світі?", a: ["Сахара", "Гобі", "Антарктична", "Атакама"], correct: 2 },
-            { q: "Скільки кісток у дорослої людини?", a: ["150", "206", "300", "250"], correct: 1 },
-            { q: "Яка країна має найбільшу кількість островів у світі?", a: ["Канада", "Фінляндія", "Швеція", "Індонезія"], correct: 2 },
-            { q: "Який газ становить більшу частину атмосфери Землі?", a: ["Кисень", "Азот", "Вуглекислий газ", "Аргон"], correct: 1 },
-            { q: "Яка перша зафіксована мова програмування високого рівня?", a: ["COBOL", "Fortran", "BASIC", "Algol"], correct: 1 },
-            { q: "Який архіпелаг є батьківщиною теорії еволюції Чарльза Дарвіна?", a: ["Гаваї", "Багамські острови", "Галапагоські острови", "Мальдіви"], correct: 2 },
-            { q: "Хто став першим лауреатом Нобелівської премії з фізики?", a: ["Вільгельм Рентген", "П'єр Кюрі", "Макс Планк", "Нільс Бор"], correct: 0 },
-            { q: "В якій країні винайшли папір?", a: ["Єгипет", "Греція", "Індія", "Китай"], correct: 3 },
-            { q: "Яка найглибша точка Світового океану?", a: ["Гренландська западина", "Маріанська западина", "Зондський жолоб", "Пуерто-Ріко"], correct: 1 },
-            { q: "Яка планета Сонячної системи має найкоротший день?", a: ["Меркурій", "Юпітер", "Сатурн", "Марс"], correct: 1 },
-            { q: "Хто вважається першим у світі програмістом?", a: ["Алан Тюрінг", "Ада Лавлейс", "Чарльз Беббідж", "Грейс Гоппер"], correct: 1 },
-            { q: "Який елемент періодичної таблиці має атомний номер 1?", a: ["Гелій", "Літій", "Водень", "Вуглець"], correct: 2 },
-            { q: "Яка сума кутів будь-якого опуклого чотирикутника?", a: ["180°", "360°", "540°", "720°"], correct: 1 },
-            { q: "Скільки супутників у Марса?", a: ["1", "2", "4", "0"], correct: 1 },
-            { q: "В якому році було запущено перший штучний супутник Землі?", a: ["1953", "1957", "1961", "1965"], correct: 1 },
-            { q: "Яка країна є найбільшим виробником кави у світі?", a: ["Колумбія", "В'єтнам", "Ефіопія", "Бразилія"], correct: 3 },
-            { q: "Хто розробив операційну систему Linux?", a: ["Біл Гейтс", "Стів Джобс", "Лінус Торвальдс", "Річард Столлман"], correct: 2 },
-            { q: "Яка найвища гора в Сонячній системі?", a: ["Еверест", "Олімп (Марс)", "Мауна-Кеа", "Кіліманджаро"], correct: 1 },
-            { q: "Яка літера не використовується в римській системі числення?", a: ["V", "X", "M", "G"], correct: 3 },
-            { q: "Яка швидкість світла у вакуумі (приблизно)?", a: ["300 000 км/с", "150 000 км/с", "500 000 км/с", "1 000 000 км/с"], correct: 0 }
-        ];
-
-        const moneySums = [
-            "1 000 000 ₴", "500 000 ₴", "250 000 ₴", "125 000 ₴", 
-            "64 000 ₴", "32 000 ₴", "16 000 ₴", "8 000 ₴", 
-            "4 000 ₴", "2 000 ₴"
-        ];
-
         let playerId = null, opponentId = null;
-        let gameState = { currentStep: 0, turn: 'p1', status: 'playing', activeQuestions: [] };
 
-        const scaleDiv = document.getElementById('money-scale');
-        moneySums.forEach((sum, idx) => {
-            const stepIndex = moneySums.length - 1 - idx;
-            const div = document.createElement('div');
-            div.className = `money-step ${stepIndex === 2 || stepIndex === 6 || stepIndex === 9 ? 'safe' : ''}`;
-            div.id = `step-${stepIndex}`;
-            div.innerHTML = `<span>${stepIndex + 1} ◆</span> <span>${sum}</span>`;
-            scaleDiv.appendChild(div);
-        });
+        // --- НАЛАШТУВАННЯ THREE.JS (3D Світ) ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050510);
+        scene.fog = new THREE.FogExp2(0x050510, 0.03);
 
-        function generateRandomQuestions() {
-            return [...allQuestionsPool].sort(() => 0.5 - Math.random()).slice(0, 10);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Освітлення
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0x00f0ff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // Арена (Земля)
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.8 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        // Сітка на підлозі для орієнтації в просторі
+        const grid = new THREE.GridHelper(100, 50, 0x00f0ff, 0x222244);
+        grid.position.y = 0.01;
+        scene.add(grid);
+
+        // Функція створення 3D моделі Танка
+        function createTankModel(color) {
+            const tankGroup = new THREE.Group();
+            
+            // Корпус
+            const bodyGeo = new THREE.BoxGeometry(2, 0.8, 3);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: color });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.4;
+            tankGroup.add(body);
+
+            // Башта
+            const turretGeo = new THREE.BoxGeometry(1.2, 0.5, 1.2);
+            const turret = new THREE.Mesh(turretGeo, bodyMat);
+            turret.position.y = 0.85;
+            tankGroup.add(turret);
+
+            // Дуло
+            const barrelGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.5);
+            const barrel = new THREE.Mesh(barrelGeo, new THREE.MeshStandardMaterial({ color: 0x333333 }));
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0.85, 1);
+            tankGroup.add(barrel);
+
+            scene.add(tankGroup);
+            return tankGroup;
         }
 
+        let myTank = null;
+        let opponentTank = null;
+        let myData = { x: 0, z: 0, rot: 0, fireTrigger: 0 };
+        let bullets = [];
+
+        // Клавіші керування
+        const keys = { w: false, s: false, a: false, d: false };
+        document.addEventListener('keydown', e => {
+            if (e.key === 'w' || e.key === 'ArrowUp') keys.w = true;
+            if (e.key === 's' || e.key === 'ArrowDown') keys.s = true;
+            if (e.key === 'a' || e.key === 'ArrowLeft') keys.a = true;
+            if (e.key === 'd' || e.key === 'ArrowRight') keys.d = true;
+            if (e.key === ' ') fireBullet(myTank, true); // Пробіл — стріляти
+        });
+        document.addEventListener('keyup', e => {
+            if (e.key === 'w' || e.key === 'ArrowUp') keys.w = false;
+            if (e.key === 's' || e.key === 'ArrowDown') keys.s = false;
+            if (e.key === 'a' || e.key === 'ArrowLeft') keys.a = false;
+            if (e.key === 'd' || e.key === 'ArrowRight') keys.d = false;
+        });
+
+        // Створення кулі
+        function fireBullet(tank, isMine) {
+            if (!tank) return;
+            const bulletGeo = new THREE.SphereGeometry(0.2, 8, 8);
+            const bulletMat = new THREE.MeshBasicMaterial({ color: isMine ? 0x00ff00 : 0xff0000 });
+            const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+            
+            bullet.position.copy(tank.position);
+            bullet.position.y = 0.85; // Висота дула
+            
+            // Вектор напрямку кулі на основі кута танка
+            bullet.userData = {
+                vx: Math.sin(tank.rotation.y) * 0.5,
+                vz: Math.cos(tank.rotation.y) * 0.5,
+                life: 60 // Існує 60 кадрів
+            };
+
+            scene.add(bullet);
+            bullets.push(bullet);
+
+            if (isMine) {
+                myData.fireTrigger = Math.random(); // Змінюємо трігер для бази даних
+                syncToFirebase();
+            }
+        }
+
+        // --- ПІДКЛЮЧЕННЯ FIREBASE МУЛЬТИПЛЕЄРУ ---
         runTransaction(ref(db, `rooms/${roomId}/users`), (curr) => {
             if (!curr) return { p1: true };
             if (!curr.p1) { curr.p1 = true; return curr; }
@@ -149,85 +157,112 @@
             return;
         }).then((res) => {
             if (!res.committed) {
-                document.getElementById('status').innerText = "Кімната заповнена! Створіть іншу.";
+                document.getElementById('status').innerText = "Кімната заповнена!";
                 return;
             }
             const u = res.snapshot.val();
             playerId = u.p2 ? 'p2' : 'p1';
             opponentId = playerId === 'p1' ? 'p2' : 'p1';
 
+            document.getElementById('status').innerText = `Ти у грі! Юніт: ${playerId.toUpperCase()}`;
+
+            // Створюємо 3D танки (Твій — синій, ворог — червоний)
+            myTank = createTankModel(0x00aaff);
+            opponentTank = createTankModel(0xff2222);
+
+            // Стартові позиції, щоб не з'явитися в одній точці
+            if (playerId === 'p1') { myTank.position.set(-10, 0, 0); } 
+            else { myTank.position.set(10, 0, 0); }
+
             onDisconnect(ref(db, `rooms/${roomId}/users/${playerId}`)).remove();
+            onDisconnect(ref(db, `rooms/${roomId}/tanks/${playerId}`)).remove();
 
-            if (playerId === 'p1') {
-                gameState.activeQuestions = generateRandomQuestions();
-                set(ref(db, `rooms/${roomId}/state`), gameState);
-            }
-
-            onValue(ref(db, `rooms/${roomId}/state`), (snap) => {
-                if (snap.exists()) {
-                    gameState = snap.val();
-                    renderGame();
+            // Слухаємо координати та дії суперника
+            let lastFireTrigger = 0;
+            onValue(ref(db, `rooms/${roomId}/tanks/${opponentId}`), (snap) => {
+                if (snap.exists() && opponentTank) {
+                    const data = snap.val();
+                    opponentTank.position.x = data.x;
+                    opponentTank.position.z = data.z;
+                    opponentTank.rotation.y = data.rot;
+                    
+                    // Якщо ворог вистрілив (трігер змінився) — малюємо його кулю у нашому вікні
+                    if (data.fireTrigger && data.fireTrigger !== lastFireTrigger) {
+                        fireBullet(opponentTank, false);
+                        lastFireTrigger = data.fireTrigger;
+                    }
                 }
             });
+
+            // Старт головного циклу гри
+            animate();
         });
 
-        function renderGame() {
-            document.querySelectorAll('.money-step').forEach(el => el.classList.remove('active'));
-            const activeStep = document.getElementById(`step-${gameState.currentStep}`);
-            if (activeStep) activeStep.classList.add('active');
-
-            if (gameState.status === 'won') {
-                document.getElementById('question').innerText = "🎉 ФАНТАСТИКА! Ви пройшли всі питання та виграли 1 000 000 ₴!";
-                toggleButtons(true);
-                document.getElementById('status').innerText = "ПЕРЕМОГА!";
-                return;
-            } else if (gameState.status === 'lost') {
-                document.getElementById('question').innerText = "💥 Упс! Помилка. Спробуйте ще раз, створивши нову кімнату.";
-                toggleButtons(true);
-                document.getElementById('status').innerText = "ГРА ЗАКІНЧЕНА (ПРОГРАШ)";
-                return;
-            }
-
-            if (gameState.turn === playerId) {
-                document.getElementById('status').innerText = `🔴 ТВІЙ ХІД! Граємо на суму: ${moneySums[moneySums.length - 1 - gameState.currentStep]}`;
-                toggleButtons(false);
-            } else {
-                document.getElementById('status').innerText = `⏳ Ходить твій напарник (${gameState.turn.toUpperCase()}). Уважно стеж за екраном!`;
-                toggleButtons(true);
-            }
-
-            if (gameState.activeQuestions && gameState.activeQuestions[gameState.currentStep]) {
-                const qData = gameState.activeQuestions[gameState.currentStep];
-                document.getElementById('question').innerText = qData.q;
-                for (let i = 0; i < 4; i++) {
-                    document.getElementById(`txt${i}`).innerText = qData.a[i];
-                }
-            }
+        function syncToFirebase() {
+            if (!myTank || !playerId) return;
+            set(ref(db, `rooms/${roomId}/tanks/${playerId}`), {
+                x: myTank.position.x,
+                z: myTank.position.z,
+                rot: myTank.rotation.y,
+                fireTrigger: myData.fireTrigger
+            });
         }
 
-        function toggleButtons(disable) {
-            for (let i = 0; i < 4; i++) {
-                document.getElementById(`btn${i}`).disabled = disable;
+        // --- ГОЛОВНИЙ ЦИКЛ РЕНДЕРУ (60 FPS) ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 1. Логіка руху твого танка
+            if (myTank) {
+                let moved = false;
+                if (keys.w) {
+                    myTank.position.x += Math.sin(myTank.rotation.y) * 0.15;
+                    myTank.position.z += Math.cos(myTank.rotation.y) * 0.15;
+                    moved = true;
+                }
+                if (keys.s) {
+                    myTank.position.x -= Math.sin(myTank.rotation.y) * 0.15;
+                    myTank.position.z -= Math.cos(myTank.rotation.y) * 0.15;
+                    moved = true;
+                }
+                if (keys.a) {
+                    myTank.rotation.y += 0.05;
+                    moved = true;
+                }
+                if (keys.d) {
+                    myTank.rotation.y -= 0.05;
+                    moved = true;
+                }
+
+                if (moved) syncToFirebase();
+
+                // Камера слідує за твоїм танком зверху-позаду
+                camera.position.set(myTank.position.x - Math.sin(myTank.rotation.y) * 12, 8, myTank.position.z - Math.cos(myTank.rotation.y) * 12);
+                camera.lookAt(myTank.position.x, myTank.position.y + 1, myTank.position.z);
             }
+
+            // 2. Логіка польоту куль
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.position.x += b.userData.vx;
+                b.position.z += b.userData.vz;
+                b.userData.life--;
+
+                if (b.userData.life <= 0) {
+                    scene.remove(b);
+                    bullets.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
         }
 
-        window.makeAnswer = function(answerIdx) {
-            if (gameState.turn !== playerId || gameState.status !== 'playing') return;
-
-            const currentQuestion = gameState.activeQuestions[gameState.currentStep];
-            if (answerIdx === currentQuestion.correct) {
-                if (gameState.currentStep + 1 >= 10) {
-                    gameState.status = 'won';
-                } else {
-                    gameState.currentStep++;
-                    gameState.turn = opponentId;
-                }
-            } else {
-                gameState.status = 'lost';
-            }
-
-            set(ref(db, `rooms/${roomId}/state`), gameState);
-        };
+        // Адаптація під розмір екрану
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
