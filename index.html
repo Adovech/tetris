@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Co-op Tetris Multiplayer</title>
+    <title>True Co-op Tetris Multiplayer</title>
     <style>
-        body { background: #1a1a24; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; margin: 0; padding: 20px; }
+        body { background: #1a1a24; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
         h1 { margin-bottom: 5px; color: #00f0ff; }
-        #status { font-size: 1.1em; color: #ffdd67; margin-bottom: 20px; }
+        #status { font-size: 1.1em; color: #ffdd67; margin-bottom: 10px; }
+        #share-url { background: #252538; padding: 8px; border-radius: 5px; color: #00f0ff; font-family: monospace; display: inline-block; margin-bottom: 20px; }
         .game-container { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; }
         .player-board { background: #252538; padding: 15px; border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
         canvas { border: 3px solid #3d3d5c; background: #0b0b12; border-radius: 4px; }
@@ -17,15 +18,19 @@
 <body>
 
     <h1>Кооперативний Тетріс Онлайн</h1>
-    <div id="status">Завантаження та підключення...</div>
+    <div id="status">Ініціалізація...</div>
+    <div id="share-link-container" style="display:none;">
+        <div>Скинь це посилання другу для спільної гри:</div>
+        <div id="share-url"></div>
+    </div>
     
     <div class="game-container">
         <div class="player-board">
-            <h3 id="local-title">Ти (Гравець)</h3>
+            <h3 id="local-title">Ти</h3>
             <canvas id="tetris-local" width="240" height="400"></canvas>
         </div>
         <div class="player-board">
-            <h3 id="remote-title">Суперник</h3>
+            <h3 id="remote-title">Очікування друга...</h3>
             <canvas id="tetris-remote" width="240" height="400"></canvas>
         </div>
     </div>
@@ -33,11 +38,9 @@
     <div class="controls">🎮 <b>Керування:</b> Стрілки Вліво / Вправо / Вниз. Стрілка "Вгору" — поворот фігури.</div>
 
     <script type="module">
-        // Використовуємо твою версію SDK 12.14.0
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, onDisconnect, runTransaction } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
-        // Твій конфігураційний об'єкт
         const firebaseConfig = {
             apiKey: "AIzaSyA_l8PXKFOi8xD1-49rZOtsH1I3uYOrwfs",
             authDomain: "monopoliya-dbc97.firebaseapp.com",
@@ -48,35 +51,25 @@
             measurementId: "G-3S79MNCZ67"
         };
 
-        // Ініціалізація
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // Створення або підключення до кімнати через URL (?room=назва)
+        // Логіка генерації унікальної кімнати
         const urlParams = new URLSearchParams(window.location.search);
         let roomId = urlParams.get('room');
+        
         if (!roomId) {
-            roomId = Math.random().toString(36).substring(2, 7); // Випадкова кімната з 5 символів
-            window.history.pushState({}, '', `?room=${roomId}`);
+            roomId = Math.random().toString(36).substring(2, 7);
+            window.location.search = `?room=${roomId}`;
         }
 
-        // Визначаємо роль: хто перший зайшов — p1, другий — p2
-        let playerId = 'p1';
-        let opponentId = 'p2';
-        
-        // Перевіримо, чи зайняте місце p1
-        onValue(ref(db, `rooms/${roomId}/p1`), (snapshot) => {
-            if (snapshot.exists() && !window.playerAssigned) {
-                playerId = 'p2';
-                opponentId = 'p1';
-            }
-            window.playerAssigned = true;
-            document.getElementById('status').innerText = `Кімната: ${roomId} | Твій юніт: ${playerId.toUpperCase()}`;
-            document.getElementById('local-title').innerText = `Ти (${playerId.toUpperCase()})`;
-            document.getElementById('remote-title').innerText = `Суперник (${opponentId.toUpperCase()})`;
-        }, { onlyOnce: true });
+        document.getElementById('share-url').innerText = window.location.href;
+        document.getElementById('share-link-container').style.display = 'block';
 
-        // Логіка Canvas
+        let playerId = null;
+        let opponentId = null;
+
+        // Canvas налаштування
         const localCanvas = document.getElementById('tetris-local');
         const localCtx = localCanvas.getContext('2d');
         const remoteCanvas = document.getElementById('tetris-remote');
@@ -85,15 +78,97 @@
         localCtx.scale(20, 20);
         remoteCtx.scale(20, 20);
 
-        // Проста фігурка (Т-подібна)
-        const tetramino = [
-            [0, 1, 0],
-            [1, 1, 1],
-            [0, 0, 0]
-        ];
+        const tetramino = [[0,1,0],[1,1,1],[0,0,0]];
+        let playerState = { pos: { x: 3, y: 0 }, matrix: tetramino };
+        let remoteState = { pos: { x: 3, y: 0 }, matrix: tetramino };
 
-        let playerState = { pos: { x: 3, y: 1 }, matrix: tetramino };
-        let remoteState = { pos: { x: 3, y: 1 }, matrix: tetramino };
+        // Захищений розподіл місць у кімнаті за допомогою Транзакції Firebase
+        const roomUsersRef = ref(db, `rooms/${roomId}/users`);
+        
+        runTransaction(roomUsersRef, (currentUsers) => {
+            if (currentUsers === null) {
+                return { p1: true };
+            } else if (!currentUsers.p1) {
+                currentUsers.p1 = true;
+                return currentUsers;
+            } else if (!currentUsers.p2) {
+                currentUsers.p2 = true;
+                return currentUsers;
+            }
+            return; // Кімната повна
+        }).then((result) => {
+            if (!result.committed) {
+                document.getElementById('status').innerText = "Кімната вже заповнена! Створіть іншу.";
+                return;
+            }
+
+            const users = result.snapshot.val();
+            if (users.p2 && !playerId) {
+                playerId = 'p2';
+                opponentId = 'p1';
+            } else {
+                playerId = 'p1';
+                opponentId = 'p2';
+            }
+
+            initGame();
+        });
+
+        function initGame() {
+            document.getElementById('status').innerText = `Кімната: ${roomId} | Твій юніт: ${playerId.toUpperCase()}`;
+            document.getElementById('local-title').innerText = `Ти (${playerId.toUpperCase()})`;
+            document.getElementById('remote-title').innerText = `Суперник (${opponentId.toUpperCase()})`;
+
+            // Очищення бази при виході з гри
+            onDisconnect(ref(db, `rooms/${roomId}/${playerId}`)).remove();
+            onDisconnect(ref(db, `rooms/${roomId}/users/${playerId}`)).remove();
+
+            // Слухаємо координати суперника
+            onValue(ref(db, `rooms/${roomId}/${opponentId}`), (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    remoteState = data;
+                    updateScreen();
+                }
+            });
+
+            // Автоматичне падіння фігурки вниз (ігровий цикл)
+            setInterval(() => {
+                playerState.pos.y++;
+                if (playerState.pos.y > 18) { // Якщо вперлися в дно — ресет наверх
+                    playerState.pos.y = 0;
+                    playerState.pos.x = Math.floor(Math.random() * 6);
+                }
+                syncAndRender();
+            }, 500);
+
+            // Керування клавішами
+            document.addEventListener('keydown', event => {
+                if (event.keyCode === 37) playerState.pos.x = Math.max(0, playerState.pos.x - 1);
+                if (event.keyCode === 39) playerState.pos.x = Math.min(7, playerState.pos.x + 1);
+                if (event.keyCode === 40) playerState.pos.y = Math.min(18, playerState.pos.y + 1);
+                if (event.keyCode === 38) rotate(playerState.matrix);
+
+                syncAndRender();
+            });
+
+            syncAndRender();
+        }
+
+        function rotate(matrix) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            matrix.forEach(row => row.reverse());
+        }
+
+        function syncAndRender() {
+            if (!playerId) return;
+            set(ref(db, `rooms/${roomId}/${playerId}`), playerState);
+            updateScreen();
+        }
 
         function drawMatrix(ctx, matrix, offset, color) {
             matrix.forEach((row, y) => {
@@ -109,58 +184,17 @@
             });
         }
 
-        function rotate(matrix) {
-            for (let y = 0; y < matrix.length; ++y) {
-                for (let x = 0; x < y; ++x) {
-                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
-                }
-            }
-            matrix.forEach(row => row.reverse());
-        }
-
         function updateScreen() {
-            // Своє поле
             localCtx.fillStyle = '#0b0b12';
             localCtx.fillRect(0, 0, localCanvas.width, localCanvas.height);
             drawMatrix(localCtx, playerState.matrix, playerState.pos, '#00f0ff');
 
-            // Поле суперника
             remoteCtx.fillStyle = '#0b0b12';
             remoteCtx.fillRect(0, 0, remoteCanvas.width, remoteCanvas.height);
             if (remoteState && remoteState.pos) {
                 drawMatrix(remoteCtx, remoteState.matrix || tetramino, remoteState.pos, '#ff007f');
             }
         }
-
-        // Синхронізація з базою
-        function syncToFirebase() {
-            set(ref(db, `rooms/${roomId}/${playerId}`), playerState);
-            // Видаляти дані з бази, якщо гравець закрив вкладку
-            onDisconnect(ref(db, `rooms/${roomId}/${playerId}`)).remove();
-        }
-
-        // Слухаємо рухи суперника
-        onValue(ref(db, `rooms/${roomId}/${opponentId}`), (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                remoteState = data;
-                updateScreen();
-            }
-        });
-
-        // Обробка клавіш
-        document.addEventListener('keydown', event => {
-            if (event.keyCode === 37) playerState.pos.x--;        // Вліво
-            else if (event.keyCode === 39) playerState.pos.x++;   // Вправо
-            else if (event.keyCode === 40) playerState.pos.y++;   // Вниз
-            else if (event.keyCode === 38) rotate(playerState.matrix); // Вгору (Поворот)
-
-            syncToFirebase();
-            updateScreen();
-        });
-
-        // Старт
-        updateScreen();
     </script>
 </body>
 </html>
