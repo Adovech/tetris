@@ -3,23 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Multiplayer Tanks via Firebase</title>
+    <title>3D Tanks: Capture The Flag Online</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: sans-serif; color: #fff; }
-        #ui { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid #00f0ff; }
-        #status { color: #ffcc00; font-weight: bold; margin-bottom: 5px; }
-        #share-url { color: #00f0ff; font-family: monospace; font-size: 12px; word-break: break-all; }
-        .controls-hint { font-size: 12px; color: #aaa; margin-top: 10px; }
+        body { margin: 0; padding: 0; overflow: hidden; background: #050510; font-family: sans-serif; color: #fff; user-select: none; }
+        #ui { position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(5, 5, 20, 0.85); padding: 20px; border-radius: 12px; border: 2px solid #00f0ff; box-shadow: 0 0 20px rgba(0,240,255,0.2); min-width: 250px; }
+        #status { color: #ffcc00; font-weight: bold; font-size: 16px; margin-bottom: 8px; }
+        #share-url { color: #00f0ff; font-family: monospace; font-size: 11px; word-break: break-all; background: #11112a; padding: 5px; border-radius: 4px; display: block; margin-top: 5px; }
+        .stats { margin-top: 15px; font-size: 14px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; }
+        .hp-bar { background: #333; width: 100%; height: 12px; border-radius: 6px; margin-top: 5px; overflow: hidden; border: 1px solid #555; }
+        #hp-fill { background: #00ff55; width: 100%; height: 100%; transition: width 0.2s; }
+        .score-board { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; color: #ffaa00; margin-top: 10px; border-top: 1px solid #333; padding-top: 10px; }
+        .controls-hint { font-size: 12px; color: #888; margin-top: 15px; line-height: 1.4; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
 
     <div id="ui">
-        <h2>3D Танчики Онлайн 🚀</h2>
-        <div id="status">Підключення до бази...</div>
-        <div>Скинь лінк другу: <span id="share-url"></span></div>
-        <div class="controls-hint">⌨️ <b>Керування:</b> Стрілки або WASD — рух. <b>Пробіл</b> — вогонь!</div>
+        <div id="status">З'єднання...</div>
+        <div>Поділися з другом: <span id="share-url"></span></div>
+        
+        <div class="stats">
+            <div>❤️ Твоє HP:</div>
+            <div class="hp-bar"><div id="hp-fill"></div></div>
+            <div id="flag-status" style="margin-top: 10px; font-weight: bold; color: #ff00ff;">Прапор: На базі</div>
+        </div>
+
+        <div class="score-board">
+            <div>Сині (P1): <span id="score-p1">0</span></div>
+            <div>Червоні (P2): <span id="score-p2">0</span></div>
+        </div>
+
+        <div class="controls-hint">
+            🎮 <b>Управління:</b> WASD / Стрілки<br>
+            🚀 <b>Постріл:</b> Пробіл (Вбивай ворога!)<br>
+            🚩 <b>Ціль:</b> Забери ворожий прапор та привези на своє коло!
+        </div>
     </div>
 
     <script type="module">
@@ -44,211 +63,357 @@
         document.getElementById('share-url').innerText = window.location.href;
 
         let playerId = null, opponentId = null;
+        let myHP = 100, isDead = false;
+        let scores = { p1: 0, p2: 0 };
+        let flagCarrier = null; // Хто несе прапор ('p1' або 'p2')
 
-        // --- НАЛАШТУВАННЯ THREE.JS (3D Світ) ---
+        // --- ТРИВИМІРНИЙ СВІТ (Three.js) ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050510);
-        scene.fog = new THREE.FogExp2(0x050510, 0.03);
+        scene.background = new THREE.Color(0x0a0a18);
+        scene.fog = new THREE.FogExp2(0x0a0a18, 0.015);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Освітлення
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0x00f0ff, 0.8);
-        dirLight.position.set(10, 20, 10);
-        scene.add(dirLight);
+        // Світло
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+        sun.position.set(30, 40, 20);
+        scene.add(sun);
 
-        // Арена (Земля)
-        const floorGeo = new THREE.PlaneGeometry(100, 100);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.8 });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
+        // --- СТВОРЕННЯ КАРТИ (Гірки, Спуски, Стіни) ---
+        const mapGroup = new THREE.Group();
+        scene.add(mapGroup);
 
-        // Сітка на підлозі для орієнтації в просторі
-        const grid = new THREE.GridHelper(100, 50, 0x00f0ff, 0x222244);
-        grid.position.y = 0.01;
-        scene.add(grid);
-
-        // Функція створення 3D моделі Танка
-        function createTankModel(color) {
-            const tankGroup = new THREE.Group();
-            
-            // Корпус
-            const bodyGeo = new THREE.BoxGeometry(2, 0.8, 3);
-            const bodyMat = new THREE.MeshStandardMaterial({ color: color });
-            const body = new THREE.Mesh(bodyGeo, bodyMat);
-            body.position.y = 0.4;
-            tankGroup.add(body);
-
-            // Башта
-            const turretGeo = new THREE.BoxGeometry(1.2, 0.5, 1.2);
-            const turret = new THREE.Mesh(turretGeo, bodyMat);
-            turret.position.y = 0.85;
-            tankGroup.add(turret);
-
-            // Дуло
-            const barrelGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.5);
-            const barrel = new THREE.Mesh(barrelGeo, new THREE.MeshStandardMaterial({ color: 0x333333 }));
-            barrel.rotation.x = Math.PI / 2;
-            barrel.position.set(0, 0.85, 1);
-            tankGroup.add(barrel);
-
-            scene.add(tankGroup);
-            return tankGroup;
-        }
-
-        let myTank = null;
-        let opponentTank = null;
-        let myData = { x: 0, z: 0, rot: 0, fireTrigger: 0 };
-        let bullets = [];
-
-        // Клавіші керування
-        const keys = { w: false, s: false, a: false, d: false };
-        document.addEventListener('keydown', e => {
-            if (e.key === 'w' || e.key === 'ArrowUp') keys.w = true;
-            if (e.key === 's' || e.key === 'ArrowDown') keys.s = true;
-            if (e.key === 'a' || e.key === 'ArrowLeft') keys.a = true;
-            if (e.key === 'd' || e.key === 'ArrowRight') keys.d = true;
-            if (e.key === ' ') fireBullet(myTank, true); // Пробіл — стріляти
-        });
-        document.addEventListener('keyup', e => {
-            if (e.key === 'w' || e.key === 'ArrowUp') keys.w = false;
-            if (e.key === 's' || e.key === 'ArrowDown') keys.s = false;
-            if (e.key === 'a' || e.key === 'ArrowLeft') keys.a = false;
-            if (e.key === 'd' || e.key === 'ArrowRight') keys.d = false;
-        });
-
-        // Створення кулі
-        function fireBullet(tank, isMine) {
-            if (!tank) return;
-            const bulletGeo = new THREE.SphereGeometry(0.2, 8, 8);
-            const bulletMat = new THREE.MeshBasicMaterial({ color: isMine ? 0x00ff00 : 0xff0000 });
-            const bullet = new THREE.Mesh(bulletGeo, bulletMat);
-            
-            bullet.position.copy(tank.position);
-            bullet.position.y = 0.85; // Висота дула
-            
-            // Вектор напрямку кулі на основі кута танка
-            bullet.userData = {
-                vx: Math.sin(tank.rotation.y) * 0.5,
-                vz: Math.cos(tank.rotation.y) * 0.5,
-                life: 60 // Існує 60 кадрів
-            };
-
-            scene.add(bullet);
-            bullets.push(bullet);
-
-            if (isMine) {
-                myData.fireTrigger = Math.random(); // Змінюємо трігер для бази даних
-                syncToFirebase();
+        // Ландшафт підлоги
+        const floorGeo = new THREE.PlaneGeometry(160, 160, 40, 40);
+        // Робимо нерівності ландшафту (пагорби та спуски) вручну за координатами вершин
+        const posAttr = floorGeo.attributes.position;
+        for (let i = 0; i < posAttr.count; i++) {
+            let x = posAttr.getX(i);
+            let y = posAttr.getY(i);
+            // Генерація хвиль/гірок математичною синусоїдою
+            if (Math.abs(x) > 15 || Math.abs(y) > 15) {
+                let zNoise = Math.sin(x * 0.1) * Math.cos(y * 0.1) * 2.5;
+                posAttr.setZ(i, zNoise);
             }
         }
+        floorGeo.computeVertexNormals();
 
-        // --- ПІДКЛЮЧЕННЯ FIREBASE МУЛЬТИПЛЕЄРУ ---
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.9, metalness: 0.1 });
+        const terrain = new THREE.Mesh(floorGeo, floorMat);
+        terrain.rotation.x = -Math.PI / 2;
+        mapGroup.add(terrain);
+
+        // Стіни (Лабіринт та перешкоди на карті)
+        const walls = [];
+        function createWall(x, z, w, h, d) {
+            const geo = new THREE.BoxGeometry(w, h, d);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x2e2e4a, roughness: 0.5 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, h/2, z);
+            mapGroup.add(mesh);
+            walls.push(mesh);
+        }
+        // Центральні захисні стіни
+        createWall(0, 20, 30, 5, 3);
+        createWall(0, -20, 30, 5, 3);
+        createWall(-25, 0, 3, 5, 25);
+        createWall(25, 0, 3, 5, 25);
+
+        // Бази команд (Базові Кола)
+        const baseGeo = new THREE.RingGeometry(0.1, 5, 32);
+        const b1Mat = new THREE.MeshBasicMaterial({ color: 0x0055ff, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+        const base1 = new THREE.Mesh(baseGeo, b1Mat); base1.rotation.x = Math.PI/2; base1.position.set(-45, 0.1, 0); scene.add(base1);
+
+        const b2Mat = new THREE.MeshBasicMaterial({ color: 0xff1100, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+        const base2 = new THREE.Mesh(baseGeo, b2Mat); base2.rotation.x = Math.PI/2; base2.position.set(45, 0.1, 0); scene.add(base2);
+
+        // Моделі Прапорів
+        function createFlagModel(color) {
+            const flagGroup = new THREE.Group();
+            const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 5);
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+            const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.y = 2.5; flagGroup.add(pole);
+
+            const clothGeo = new THREE.BoxGeometry(1.8, 1.2, 0.1);
+            const clothMat = new THREE.MeshStandardMaterial({ color: color });
+            const cloth = new THREE.Mesh(clothGeo, clothMat); cloth.position.set(0.9, 4.3, 0); flagGroup.add(cloth);
+            scene.add(flagGroup);
+            return flagGroup;
+        }
+        const flagP1 = createFlagModel(0x0055ff); flagP1.position.set(-45, 0, 0); // Синій прапор на лівій базі
+        const flagP2 = createFlagModel(0xff1100); flagP2.position.set(45, 0, 0);  // Червоний прапор на правій базі
+
+        // --- МОДЕЛЮВАННЯ КРУТИХ ТАНКІВ ---
+        function createAdvancedTank(color) {
+            const tank = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.7, roughness: 0.2 });
+            const darkMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.5 });
+
+            // Броньований корпус
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 3.6), mat); body.position.y = 0.55; tank.add(body);
+            // Гусениці (Ліва та Права)
+            const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 3.8), darkMat); trackL.position.set(-1.3, 0.3, 0); tank.add(trackL);
+            const trackR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 3.8), darkMat); trackR.position.set(1.3, 0.3, 0); tank.add(trackR);
+            // Вежа танка
+            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.6), mat); turret.position.set(0, 1.05, -0.2); tank.add(turret);
+            // Довга гармата
+            const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.2), darkMat); gun.rotation.x = Math.PI/2; gun.position.set(0, 1.05, 1.3); tank.add(gun);
+
+            scene.add(tank);
+            return tank;
+        }
+
+        let myTank = createAdvancedTank(0x0099ff);
+        let opponentTank = createAdvancedTank(0xff3333);
+        
+        let keys = { w:0, s:0, a:0, d:0 };
+        let myData = { x: -45, z: 0, rot: Math.PI/2, fireTrigger: 0, hp: 100 };
+        myTank.position.set(myData.x, 0, myData.z);
+
+        // Функція отримання висоти пагорбів під танком (Y координата)
+        function getTerrainHeight(x, z) {
+            return Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2.5;
+        }
+
+        // --- СТРІЛЬБА ТА DAMAGE СИСТЕМА ---
+        let bullets = [];
+        function fire() {
+            if (isDead) return;
+            const bGeo = new THREE.SphereGeometry(0.25, 8, 8);
+            const bMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+            const b = new THREE.Mesh(bGeo, bMat);
+            b.position.copy(myTank.position);
+            b.position.y += 1.05; // З рівня гармати
+
+            b.userData = {
+                vx: Math.sin(myTank.rotation.y) * 0.7,
+                vz: Math.cos(myTank.rotation.y) * 0.7,
+                owner: playerId,
+                life: 50
+            };
+            scene.add(b);
+            bullets.push(b);
+
+            myData.fireTrigger = Math.random();
+            syncToFirebase();
+        }
+
+        function spawnEnemyBullet(enemyTank) {
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff3300 }));
+            b.position.copy(enemyTank.position);
+            b.position.y += 1.05;
+            b.userData = {
+                vx: Math.sin(enemyTank.rotation.y) * 0.7,
+                vz: Math.cos(enemyTank.rotation.y) * 0.7,
+                owner: opponentId,
+                life: 50
+            };
+            scene.add(b);
+            bullets.push(b);
+        }
+
+        function checkDamage(bullet) {
+            if (bullet.userData.owner === playerId) return; // Свої кулі не дамажать себе
+            let dist = myTank.position.distanceTo(bullet.position);
+            if (dist < 1.8 && !isDead) {
+                myHP -= 25; // Отримуємо урон при попаданні кулі
+                document.getElementById('hp-fill').style.width = myHP + '%';
+                if (myHP <= 0) {
+                    explodeAndRespawn();
+                }
+                syncToFirebase();
+                return true;
+            }
+            return false;
+        }
+
+        function explodeAndRespawn() {
+            isDead = true;
+            myHP = 100;
+            document.getElementById('hp-fill').style.width = '100%';
+            
+            // Якщо ніс прапор — скидаємо його на базу при смерті
+            if (flagCarrier === playerId) {
+                set(ref(db, `rooms/${roomId}/flag`), { carrier: null });
+            }
+
+            alert("💥 Твій танк знищено! Респавн на базі.");
+            
+            // Повернення на респавн бази
+            if (playerId === 'p1') { myTank.position.set(-45, 0, 0); myTank.rotation.y = Math.PI/2; } 
+            else { myTank.position.set(45, 0, 0); myTank.rotation.y = -Math.PI/2; }
+            
+            isDead = false;
+            syncToFirebase();
+        }
+
+        // --- ЛОГІКА МУЛЬТИПЛЕЄРУ FIREBASE ---
         runTransaction(ref(db, `rooms/${roomId}/users`), (curr) => {
             if (!curr) return { p1: true };
             if (!curr.p1) { curr.p1 = true; return curr; }
             if (!curr.p2) { curr.p2 = true; return curr; }
             return;
         }).then((res) => {
-            if (!res.committed) {
-                document.getElementById('status').innerText = "Кімната заповнена!";
-                return;
-            }
+            if (!res.committed) { alert("Кімната заповнена!"); return; }
             const u = res.snapshot.val();
             playerId = u.p2 ? 'p2' : 'p1';
             opponentId = playerId === 'p1' ? 'p2' : 'p1';
 
-            document.getElementById('status').innerText = `Ти у грі! Юніт: ${playerId.toUpperCase()}`;
+            document.getElementById('status').innerText = `РЕЖИМ CTF | ТИ: ${playerId.toUpperCase()}`;
 
-            // Створюємо 3D танки (Твій — синій, ворог — червоний)
-            myTank = createTankModel(0x00aaff);
-            opponentTank = createTankModel(0xff2222);
-
-            // Стартові позиції, щоб не з'явитися в одній точці
-            if (playerId === 'p1') { myTank.position.set(-10, 0, 0); } 
-            else { myTank.position.set(10, 0, 0); }
+            if (playerId === 'p1') {
+                myTank.position.set(-45, 0, 0); myTank.rotation.y = Math.PI/2;
+                set(ref(db, `rooms/${roomId}/flag`), { carrier: null });
+                set(ref(db, `rooms/${roomId}/scores`), { p1: 0, p2: 0 });
+            } else {
+                myTank.position.set(45, 0, 0); myTank.rotation.y = -Math.PI/2;
+            }
 
             onDisconnect(ref(db, `rooms/${roomId}/users/${playerId}`)).remove();
             onDisconnect(ref(db, `rooms/${roomId}/tanks/${playerId}`)).remove();
 
-            // Слухаємо координати та дії суперника
-            let lastFireTrigger = 0;
+            // Стрім позицій суперника
+            let lastTrigger = 0;
             onValue(ref(db, `rooms/${roomId}/tanks/${opponentId}`), (snap) => {
                 if (snap.exists() && opponentTank) {
                     const data = snap.val();
-                    opponentTank.position.x = data.x;
-                    opponentTank.position.z = data.z;
+                    opponentTank.position.set(data.x, getTerrainHeight(data.x, data.z), data.z);
                     opponentTank.rotation.y = data.rot;
-                    
-                    // Якщо ворог вистрілив (трігер змінився) — малюємо його кулю у нашому вікні
-                    if (data.fireTrigger && data.fireTrigger !== lastFireTrigger) {
-                        fireBullet(opponentTank, false);
-                        lastFireTrigger = data.fireTrigger;
+                    if (data.fireTrigger && data.fireTrigger !== lastTrigger) {
+                        spawnEnemyBullet(opponentTank);
+                        lastTrigger = data.fireTrigger;
                     }
                 }
             });
 
-            // Старт головного циклу гри
+            // Стрім стану прапора
+            onValue(ref(db, `rooms/${roomId}/flag`), (snap) => {
+                if (snap.exists()) {
+                    flagCarrier = snap.val().carrier;
+                    const fStatus = document.getElementById('flag-status');
+                    if (!flagCarrier) fStatus.innerText = "Прапор: На ворожій базі";
+                    else fStatus.innerText = `Прапор утримує: ${flagCarrier.toUpperCase()}`;
+                }
+            });
+
+            // Стрім рахунку
+            onValue(ref(db, `rooms/${roomId}/scores`), (snap) => {
+                if (snap.exists()) {
+                    scores = snap.val();
+                    document.getElementById('score-p1').innerText = scores.p1;
+                    document.getElementById('score-p2').innerText = scores.p2;
+                }
+            });
+
             animate();
         });
 
         function syncToFirebase() {
             if (!myTank || !playerId) return;
             set(ref(db, `rooms/${roomId}/tanks/${playerId}`), {
-                x: myTank.position.x,
-                z: myTank.position.z,
-                rot: myTank.rotation.y,
-                fireTrigger: myData.fireTrigger
+                x: myTank.position.x, z: myTank.position.z, rot: myTank.rotation.y,
+                fireTrigger: myData.fireTrigger, hp: myHP
             });
         }
 
-        // --- ГОЛОВНИЙ ЦИКЛ РЕНДЕРУ (60 FPS) ---
+        // Клавіатура
+        window.addEventListener('keydown', e => {
+            if(e.key==='w'||e.key==='ArrowUp') keys.w=1; if(e.key==='s'||e.key==='ArrowDown') keys.s=1;
+            if(e.key==='a'||e.key==='ArrowLeft') keys.a=1; if(e.key==='d'||e.key==='ArrowRight') keys.d=1;
+            if(e.key===' ') fire();
+        });
+        window.addEventListener('keyup', e => {
+            if(e.key==='w'||e.key==='ArrowUp') keys.w=0; if(e.key==='s'||e.key==='ArrowDown') keys.s=0;
+            if(e.key==='a'||e.key==='ArrowLeft') keys.a=0; if(e.key==='d'||e.key==='ArrowRight') keys.d=0;
+        });
+
+        // --- ЦИКЛ ГРИ (60 FPS) ---
         function animate() {
             requestAnimationFrame(animate);
 
-            // 1. Логіка руху твого танка
-            if (myTank) {
+            if (myTank && !isDead) {
                 let moved = false;
+                // Рух вперед/назад з урахуванням нахилу пагорба
                 if (keys.w) {
-                    myTank.position.x += Math.sin(myTank.rotation.y) * 0.15;
-                    myTank.position.z += Math.cos(myTank.rotation.y) * 0.15;
+                    myTank.position.x += Math.sin(myTank.rotation.y) * 0.2;
+                    myTank.position.z += Math.cos(myTank.rotation.y) * 0.2;
                     moved = true;
                 }
                 if (keys.s) {
-                    myTank.position.x -= Math.sin(myTank.rotation.y) * 0.15;
-                    myTank.position.z -= Math.cos(myTank.rotation.y) * 0.15;
+                    myTank.position.x -= Math.sin(myTank.rotation.y) * 0.2;
+                    myTank.position.z -= Math.cos(myTank.rotation.y) * 0.2;
                     moved = true;
                 }
-                if (keys.a) {
-                    myTank.rotation.y += 0.05;
-                    moved = true;
-                }
-                if (keys.d) {
-                    myTank.rotation.y -= 0.05;
-                    moved = true;
-                }
+                if (keys.a) { myTank.rotation.y += 0.04; moved = true; }
+                if (keys.d) { myTank.rotation.y -= 0.04; moved = true; }
+
+                // Динамічний розрахунок висоти Y відповідно до рельєфу підлоги
+                myTank.position.y = getTerrainHeight(myTank.position.x, myTank.position.z);
+
+                // Колізія зі стінами на мапі
+                walls.forEach(wall => {
+                    let wBox = new THREE.Box3().setFromObject(wall);
+                    let tBox = new THREE.Box3().setFromObject(myTank);
+                    if (wBox.intersectsBox(tBox)) { // Якщо вперся в стіну — відкочуємо позицію назад
+                        if (keys.w) { myTank.position.x -= Math.sin(myTank.rotation.y)*0.3; myTank.position.z -= Math.cos(myTank.rotation.y)*0.3; }
+                        if (keys.s) { myTank.position.x += Math.sin(myTank.rotation.y)*0.3; myTank.position.z += Math.cos(myTank.rotation.y)*0.3; }
+                    }
+                });
 
                 if (moved) syncToFirebase();
 
-                // Камера слідує за твоїм танком зверху-позаду
-                camera.position.set(myTank.position.x - Math.sin(myTank.rotation.y) * 12, 8, myTank.position.z - Math.cos(myTank.rotation.y) * 12);
-                camera.lookAt(myTank.position.x, myTank.position.y + 1, myTank.position.z);
+                // --- СИСТЕМА ПРАПОРІВ (CAPTURE THE FLAG) ---
+                if (playerId === 'p1') {
+                    // Синій танк наближається до червоного прапора (P2)
+                    if (!flagCarrier && myTank.position.distanceTo(flagP2.position) < 3.5) {
+                        set(ref(db, `rooms/${roomId}/flag`), { carrier: 'p1' });
+                    }
+                    // Якщо доніс до своєї бази
+                    if (flagCarrier === 'p1' && myTank.position.distanceTo(base1.position) < 4) {
+                        set(ref(db, `rooms/${roomId}/flag`), { carrier: null });
+                        set(ref(db, `rooms/${roomId}/scores`), { p1: scores.p1 + 1, p2: scores.p2 });
+                        alert("🎉 Синя команда (P1) захопила прапор та отримала 1 бал!");
+                    }
+                } else {
+                    // Червоний танк наближається до синього прапора (P1)
+                    if (!flagCarrier && myTank.position.distanceTo(flagP1.position) < 3.5) {
+                        set(ref(db, `rooms/${roomId}/flag`), { carrier: 'p2' });
+                    }
+                    // Якщо доніс до своєї бази
+                    if (flagCarrier === 'p2' && myTank.position.distanceTo(base2.position) < 4) {
+                        set(ref(db, `rooms/${roomId}/flag`), { carrier: null });
+                        set(ref(db, `rooms/${roomId}/scores`), { p1: scores.p1, p2: scores.p2 + 1 });
+                        alert("🎉 Червона команда (P2) захопила прапор та отримала 1 бал!");
+                    }
+                }
+
+                // Логіка кріплення прапора, коли його везуть
+                if (flagCarrier === 'p1') { flagP2.position.copy(myTank.position); flagP2.position.y += 1.5; }
+                else if (!flagCarrier) { flagP2.position.set(45, 0, 0); } // Повернення на місце
+
+                if (flagCarrier === 'p2') { flagP1.position.copy(opponentTank.position); flagP1.position.y += 1.5; }
+                else if (!flagCarrier) { flagP1.position.set(-45, 0, 0); }
+
+                // Динамічна камера за танком
+                camera.position.set(myTank.position.x - Math.sin(myTank.rotation.y)*14, myTank.position.y+7, myTank.position.z - Math.cos(myTank.rotation.y)*14);
+                camera.lookAt(myTank.position.x, myTank.position.y+1.2, myTank.position.z);
             }
 
-            // 2. Логіка польоту куль
+            // Рендер і колізія куль
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i];
                 b.position.x += b.userData.vx;
                 b.position.z += b.userData.vz;
+                b.position.y = getTerrainHeight(b.position.x, b.position.z) + 1.05;
                 b.userData.life--;
 
-                if (b.userData.life <= 0) {
+                let hit = checkDamage(b);
+
+                if (b.userData.life <= 0 || hit) {
                     scene.remove(b);
                     bullets.splice(i, 1);
                 }
@@ -257,10 +422,8 @@
             renderer.render(scene, camera);
         }
 
-        // Адаптація під розмір екрану
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
