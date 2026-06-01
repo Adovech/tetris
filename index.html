@@ -33,7 +33,7 @@
 
     <div class="game-box">
         <h1>Oнлайн-Вікторина: Хто хоче стати мільйонером?</h1>
-        <div id="status">Завантаження та генерація питань...</div>
+        <div id="status">Завантаження та підключення до твоєї бази...</div>
         <div id="share-box">🔗 Надішли другу для спільної гри: <span id="share-url"></span></div>
 
         <div class="main-content">
@@ -57,6 +57,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
         import { getDatabase, ref, set, onValue, onDisconnect, runTransaction } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
+        // ТВОЯ ДАТАБАЗА MONOPOLIYA
         const firebaseConfig = {
             apiKey: "AIzaSyA_l8PXKFOi8xD1-49rZOtsH1I3uYOrwfs",
             authDomain: "monopoliya-dbc97.firebaseapp.com",
@@ -76,22 +77,19 @@
 
         // ВЕЛИКА БАЗА ДАНИХ ПИТАНЬ (40 штук)
         const allQuestionsPool = [
-            // Прості
             { q: "Яка планета є третьою від Сонця?", a: ["Марс", "Венера", "Земля", "Юпітер"], correct: 2 },
             { q: "Скільки кутів у трикутника?", a: ["4", "3", "5", "6"], correct: 1 },
             { q: "Який метал є рідким за кімнатної температури?", a: ["Залізо", "Ртуть", "Мідь", "Свинець"], correct: 1 },
             { q: "Хто написав «Кобзар»?", a: ["Іван Франко", "Леся Українка", "Тарас Шевченко", "Михайло Коцюбинський"], correct: 2 },
             { q: "Яка столиця України?", a: ["Львів", "Харків", "Київ", "Одеса"], correct: 2 },
             { q: "Який океан найбільший на Землі?", a: ["Атлантичний", "Індійський", "Тихий", "Північно-Льодовитий"], correct: 2 },
-            { q: "Скільки хвилин в одній годині?", a: ["50", "60", "100", "12], correct: 1 },
-            { q: "Який колір вийде, якщо змішати синій і жовтий?", a: ["Зелений", "Фолетовий", "Помаранчевий", "Коричневий"], correct: 0 },
+            { q: "Скільки хвилин в одній годині?", a: ["50", "60", "100", "12"], correct: 1 },
+            { q: "Який колір вийде, якщо змішати синій і жовтий?", a: ["Зелений", "Фіолетовий", "Помаранчевий", "Коричневий"], correct: 0 },
             { q: "Яка тварина вважається царем звірів?", a: ["Тигр", "Ведмідь", "Лев", "Слон"], correct: 2 },
             { q: "Який птах є символом миру?", a: ["Орел", "Голуб", "Ворона", "Лелека"], correct: 1 },
-            
-            // Середні
             { q: "Яка мова програмування найчастіше використовується для стилізації веб-сторінок?", a: ["HTML", "Python", "CSS", "C++"], correct: 2 },
             { q: "Яка найдовша річка у світі?", a: ["Амазонка", "Ніл", "Міссісіпі", "Дніпро"], correct: 0 },
-            { q: "Який хімічний елемент позначається літерою O?", a: ["Золото", "Осмій", "Кисень", "Водень"], correct: 2 },
+            { q: "Який хімічний елемент позначається літерою O?", a: ["Золото", "Осмій", "Kисень", "Водень"], correct: 2 },
             { q: "Скільки континентів на Землі?", a: ["5", "6", "7", "4"], correct: 1 },
             { q: "Яка країна подарувала США Статую Свободи?", a: ["Франція", "Велика Британія", "Німеччина", "Італія"], correct: 0 },
             { q: "Хто відкрив закон всесвітнього тяжіння?", a: ["Альберт Ейнштейн", "Ісаак Ньютон", "Галілео Галілей", "Рене Декарт"], correct: 1 },
@@ -99,8 +97,6 @@
             { q: "Яка грошова одиниця Японії?", a: ["Юань", "Вона", "Єна", "Долар"], correct: 2 },
             { q: "Який орган людського тіла виробляє інсулін?", a: ["Печінка", "Шлунок", "Підшлункова залоза", "Нирки"], correct: 2 },
             { q: "Хто створив картину 'Мона Ліза'?", a: ["Пабло Пікассо", "Леонардо да Вінчі", "Вінсент ван Гог", "Мікеланджело"], correct: 1 },
-
-            // Складні
             { q: "Яка пустеля є найбільшою у світі?", a: ["Сахара", "Гобі", "Антарктична", "Атакама"], correct: 2 },
             { q: "Скільки кісток у дорослої людини?", a: ["150", "206", "300", "250"], correct: 1 },
             { q: "Яка країна має найбільшу кількість островів у світі?", a: ["Канада", "Фінляндія", "Швеція", "Індонезія"], correct: 2 },
@@ -111,8 +107,6 @@
             { q: "В якій країні винайшли папір?", a: ["Єгипет", "Греція", "Індія", "Китай"], correct: 3 },
             { q: "Яка найглибша точка Світового океану?", a: ["Гренландська западина", "Маріанська западина", "Зондський жолоб", "Пуерто-Ріко"], correct: 1 },
             { q: "Яка планета Сонячної системи має найкоротший день?", a: ["Меркурій", "Юпітер", "Сатурн", "Марс"], correct: 1 },
-
-            // Експертні
             { q: "Хто вважається першим у світі програмістом?", a: ["Алан Тюрінг", "Ада Лавлейс", "Чарльз Беббідж", "Грейс Гоппер"], correct: 1 },
             { q: "Який елемент періодичної таблиці має атомний номер 1?", a: ["Гелій", "Літій", "Водень", "Вуглець"], correct: 2 },
             { q: "Яка сума кутів будь-якого опуклого чотирикутника?", a: ["180°", "360°", "540°", "720°"], correct: 1 },
@@ -125,7 +119,6 @@
             { q: "Яка швидкість світла у вакуумі (приблизно)?", a: ["300 000 км/с", "150 000 км/с", "500 000 км/с", "1 000 000 км/с"], correct: 0 }
         ];
 
-        // 10 рівнів грошей (від меншого до мільйона)
         const moneySums = [
             "1 000 000 ₴", "500 000 ₴", "250 000 ₴", "125 000 ₴", 
             "64 000 ₴", "32 000 ₴", "16 000 ₴", "8 000 ₴", 
@@ -135,25 +128,20 @@
         let playerId = null, opponentId = null;
         let gameState = { currentStep: 0, turn: 'p1', status: 'playing', activeQuestions: [] };
 
-        // Рендер грошової шкали
         const scaleDiv = document.getElementById('money-scale');
         moneySums.forEach((sum, idx) => {
             const stepIndex = moneySums.length - 1 - idx;
             const div = document.createElement('div');
-            // 2-й та 6-й кроки зробимо безпечними (незгораними)
             div.className = `money-step ${stepIndex === 2 || stepIndex === 6 || stepIndex === 9 ? 'safe' : ''}`;
             div.id = `step-${stepIndex}`;
             div.innerHTML = `<span>${stepIndex + 1} ◆</span> <span>${sum}</span>`;
             scaleDiv.appendChild(div);
         });
 
-        // Перемішування пулу та вибір 10 випадкових питань
         function generateRandomQuestions() {
-            const shuffled = [...allQuestionsPool].sort(() => 0.5 - Math.random());
-            return shuffled.slice(0, 10);
+            return [...allQuestionsPool].sort(() => 0.5 - Math.random()).slice(0, 10);
         }
 
-        // Підключення через Транзакцію
         runTransaction(ref(db, `rooms/${roomId}/users`), (curr) => {
             if (!curr) return { p1: true };
             if (!curr.p1) { curr.p1 = true; return curr; }
@@ -170,13 +158,11 @@
 
             onDisconnect(ref(db, `rooms/${roomId}/users/${playerId}`)).remove();
 
-            // Якщо зайшов P1 — він генерує унікальний набір питань для цієї сесії
             if (playerId === 'p1') {
                 gameState.activeQuestions = generateRandomQuestions();
                 set(ref(db, `rooms/${roomId}/state`), gameState);
             }
 
-            // Стрім стану гри
             onValue(ref(db, `rooms/${roomId}/state`), (snap) => {
                 if (snap.exists()) {
                     gameState = snap.val();
@@ -202,7 +188,6 @@
                 return;
             }
 
-            // Блокування кнопок для того, хто зараз не ходить
             if (gameState.turn === playerId) {
                 document.getElementById('status').innerText = `🔴 ТВІЙ ХІД! Граємо на суму: ${moneySums[moneySums.length - 1 - gameState.currentStep]}`;
                 toggleButtons(false);
@@ -211,7 +196,6 @@
                 toggleButtons(true);
             }
 
-            // Виведення поточного питання
             if (gameState.activeQuestions && gameState.activeQuestions[gameState.currentStep]) {
                 const qData = gameState.activeQuestions[gameState.currentStep];
                 document.getElementById('question').innerText = qData.q;
@@ -227,18 +211,16 @@
             }
         }
 
-        // Обробка відповідей
         window.makeAnswer = function(answerIdx) {
             if (gameState.turn !== playerId || gameState.status !== 'playing') return;
 
             const currentQuestion = gameState.activeQuestions[gameState.currentStep];
             if (answerIdx === currentQuestion.correct) {
-                // Успіх!
                 if (gameState.currentStep + 1 >= 10) {
-                    gameState.status = 'won'; // Пройшли 10 питань — мільйон наш
+                    gameState.status = 'won';
                 } else {
                     gameState.currentStep++;
-                    gameState.turn = opponentId; // Передаємо мікрофон другу
+                    gameState.turn = opponentId;
                 }
             } else {
                 gameState.status = 'lost';
