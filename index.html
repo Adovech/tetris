@@ -3,29 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Co-op Tetris Together</title>
+    <title>Хто хоче стати мільйонером? МЕГА-кооп</title>
     <style>
-        body { background: #1a1a24; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; }
-        h1 { color: #00f0ff; font-size: 24px; margin-bottom: 5px; }
-        #status { color: #ffdd67; margin-bottom: 10px; font-weight: bold; }
-        #share-box { background: #252538; padding: 8px; border-radius: 6px; display: inline-block; margin-bottom: 15px; }
-        #share-url { color: #00f0ff; font-family: monospace; }
-        .game-area { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 10px; }
-        canvas { border: 4px solid #3d3d5c; background: #0b0b12; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-        .controls { margin-top: 15px; color: #aaa; font-size: 14px; background: #252538; padding: 8px 15px; border-radius: 20px; display: inline-block; }
+        body { background: #020230; color: #fff; font-family: 'Arial', sans-serif; text-align: center; margin: 0; padding: 20px; }
+        .game-box { max-width: 950px; margin: 0 auto; background: radial-gradient(circle, #08085e 0%, #020230 100%); padding: 30px; border: 3px solid #00f0ff; border-radius: 20px; box-shadow: 0 0 30px rgba(0,240,255,0.3); }
+        h1 { color: #ffcc00; text-shadow: 0 0 10px rgba(255,204,0,0.6); font-size: 28px; margin-top: 0; }
+        #status { color: #00f0ff; font-weight: bold; margin-bottom: 15px; font-size: 18px; }
+        #share-box { background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px; font-size: 14px; margin-bottom: 25px; display: inline-block; }
+        #share-url { color: #ffcc00; font-family: monospace; font-weight: bold; }
+        
+        .main-content { display: flex; gap: 20px; justify-content: space-between; margin-top: 20px; flex-wrap: wrap; }
+        .quiz-area { flex: 2; min-width: 300px; }
+        .money-list { flex: 1; min-width: 220px; background: #040440; padding: 15px; border-radius: 10px; border: 1px solid #33338c; text-align: left; }
+        
+        .money-step { padding: 5px 10px; font-weight: bold; color: #ffaa00; display: flex; justify-content: space-between; border-radius: 4px; font-size: 14px; margin-bottom: 2px; }
+        .money-step.active { background: #ffcc00; color: #000; }
+        .money-step.safe { color: #fff; border-left: 4px solid #00f0ff; }
+
+        .question-text { background: #040440; border: 2px solid #33338c; padding: 25px; border-radius: 30px; font-size: 20px; margin-bottom: 25px; min-height: 60px; display: flex; align-items: center; justify-content: center; line-height: 1.4; }
+        
+        .answers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .btn-answer { background: #040440; border: 2px solid #33338c; color: white; padding: 15px; font-size: 16px; border-radius: 30px; cursor: pointer; text-align: left; transition: 0.2s; position: relative; }
+        .btn-answer:hover { background: #10107a; border-color: #00f0ff; }
+        .btn-answer span { color: #ffcc00; font-weight: bold; margin-right: 10px; }
+        .btn-answer:disabled { opacity: 0.4; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
-    <h1>Спільний Ко-оп Тетріс (Одне Поле)</h1>
-    <div id="status">Підключення...</div>
-    <div id="share-box">Посилання для друга: <span id="share-url"></span></div>
-    
-    <div class="game-area">
-        <canvas id="tetris" width="300" height="600"></canvas>
-    </div>
+    <div class="game-box">
+        <h1>Oнлайн-Вікторина: Хто хоче стати мільйонером?</h1>
+        <div id="status">Завантаження та генерація питань...</div>
+        <div id="share-box">🔗 Надішли другу для спільної гри: <span id="share-url"></span></div>
 
-    <div class="controls">🎮 <b>Керування:</b> Стрілки Вліво/Вправо/Вниз. Вгору — поворот фігури.</div>
+        <div class="main-content">
+            <div class="quiz-area">
+                <div class="question-text" id="question">Очікування підключення гравців...</div>
+                <div class="answers-grid">
+                    <button class="btn-answer" onclick="makeAnswer(0)" id="btn0"><span>A:</span> <text id="txt0"></text></button>
+                    <button class="btn-answer" onclick="makeAnswer(1)" id="btn1"><span>B:</span> <text id="txt1"></text></button>
+                    <button class="btn-answer" onclick="makeAnswer(2)" id="btn2"><span>C:</span> <text id="txt2"></text></button>
+                    <button class="btn-answer" onclick="makeAnswer(3)" id="btn3"><span>D:</span> <text id="txt3"></text></button>
+                </div>
+            </div>
+
+            <div class="money-list" id="money-scale">
+                <!-- Заповниться динамічно -->
+            </div>
+        </div>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
@@ -48,136 +74,86 @@
         if (!urlParams.get('room')) window.location.search = `?room=${roomId}`;
         document.getElementById('share-url').innerText = window.location.href;
 
-        const canvas = document.getElementById('tetris');
-        const ctx = canvas.getContext('2d');
-        ctx.scale(30, 30); // Розмір блоку 30х30 пкс. Поле 10х20 блоків.
+        // ВЕЛИКА БАЗА ДАНИХ ПИТАНЬ (40 штук)
+        const allQuestionsPool = [
+            // Прості
+            { q: "Яка планета є третьою від Сонця?", a: ["Марс", "Венера", "Земля", "Юпітер"], correct: 2 },
+            { q: "Скільки кутів у трикутника?", a: ["4", "3", "5", "6"], correct: 1 },
+            { q: "Який метал є рідким за кімнатної температури?", a: ["Залізо", "Ртуть", "Мідь", "Свинець"], correct: 1 },
+            { q: "Хто написав «Кобзар»?", a: ["Іван Франко", "Леся Українка", "Тарас Шевченко", "Михайло Коцюбинський"], correct: 2 },
+            { q: "Яка столиця України?", a: ["Львів", "Харків", "Київ", "Одеса"], correct: 2 },
+            { q: "Який океан найбільший на Землі?", a: ["Атлантичний", "Індійський", "Тихий", "Північно-Льодовитий"], correct: 2 },
+            { q: "Скільки хвилин в одній годині?", a: ["50", "60", "100", "12], correct: 1 },
+            { q: "Який колір вийде, якщо змішати синій і жовтий?", a: ["Зелений", "Фолетовий", "Помаранчевий", "Коричневий"], correct: 0 },
+            { q: "Яка тварина вважається царем звірів?", a: ["Тигр", "Ведмідь", "Лев", "Слон"], correct: 2 },
+            { q: "Який птах є символом миру?", a: ["Орел", "Голуб", "Ворона", "Лелека"], correct: 1 },
+            
+            // Середні
+            { q: "Яка мова програмування найчастіше використовується для стилізації веб-сторінок?", a: ["HTML", "Python", "CSS", "C++"], correct: 2 },
+            { q: "Яка найдовша річка у світі?", a: ["Амазонка", "Ніл", "Міссісіпі", "Дніпро"], correct: 0 },
+            { q: "Який хімічний елемент позначається літерою O?", a: ["Золото", "Осмій", "Кисень", "Водень"], correct: 2 },
+            { q: "Скільки континентів на Землі?", a: ["5", "6", "7", "4"], correct: 1 },
+            { q: "Яка країна подарувала США Статую Свободи?", a: ["Франція", "Велика Британія", "Німеччина", "Італія"], correct: 0 },
+            { q: "Хто відкрив закон всесвітнього тяжіння?", a: ["Альберт Ейнштейн", "Ісаак Ньютон", "Галілео Галілей", "Рене Декарт"], correct: 1 },
+            { q: "В якому році вибухнув Чорнобильський АЕС?", a: ["1984", "1986", "1989", "1991"], correct: 1 },
+            { q: "Яка грошова одиниця Японії?", a: ["Юань", "Вона", "Єна", "Долар"], correct: 2 },
+            { q: "Який орган людського тіла виробляє інсулін?", a: ["Печінка", "Шлунок", "Підшлункова залоза", "Нирки"], correct: 2 },
+            { q: "Хто створив картину 'Мона Ліза'?", a: ["Пабло Пікассо", "Леонардо да Вінчі", "Вінсент ван Гог", "Мікеланджело"], correct: 1 },
 
-        // Спільна матриця поля (стакан)
-        const arena = Array.from({length: 20}, () => Array(10).fill(0));
-        
-        const pieces = {
-            'I': [[0,1,0,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]],
-            'L': [[0,2,0],[0,2,0],[0,2,2]],
-            'O': [[3,3],[3,3]],
-            'T': [[0,4,0],[4,4,4],[0,0,0]]
-        };
+            // Складні
+            { q: "Яка пустеля є найбільшою у світі?", a: ["Сахара", "Гобі", "Антарктична", "Атакама"], correct: 2 },
+            { q: "Скільки кісток у дорослої людини?", a: ["150", "206", "300", "250"], correct: 1 },
+            { q: "Яка країна має найбільшу кількість островів у світі?", a: ["Канада", "Фінляндія", "Швеція", "Індонезія"], correct: 2 },
+            { q: "Який газ становить більшу частину атмосфери Землі?", a: ["Кисень", "Азот", "Вуглекислий газ", "Аргон"], correct: 1 },
+            { q: "Яка перша зафіксована мова програмування високого рівня?", a: ["COBOL", "Fortran", "BASIC", "Algol"], correct: 1 },
+            { q: "Який архіпелаг є батьківщиною теорії еволюції Чарльза Дарвіна?", a: ["Гаваї", "Багамські острови", "Галапагоські острови", "Мальдіви"], correct: 2 },
+            { q: "Хто став першим лауреатом Нобелівської премії з фізики?", a: ["Вільгельм Рентген", "П'єр Кюрі", "Макс Планк", "Нільс Бор"], correct: 0 },
+            { q: "В якій країні винайшли папір?", a: ["Єгипет", "Греція", "Індія", "Китай"], correct: 3 },
+            { q: "Яка найглибша точка Світового океану?", a: ["Гренландська западина", "Маріанська западина", "Зондський жолоб", "Пуерто-Ріко"], correct: 1 },
+            { q: "Яка планета Сонячної системи має найкоротший день?", a: ["Меркурій", "Юпітер", "Сатурн", "Марс"], correct: 1 },
+
+            // Експертні
+            { q: "Хто вважається першим у світі програмістом?", a: ["Алан Тюрінг", "Ада Лавлейс", "Чарльз Беббідж", "Грейс Гоппер"], correct: 1 },
+            { q: "Який елемент періодичної таблиці має атомний номер 1?", a: ["Гелій", "Літій", "Водень", "Вуглець"], correct: 2 },
+            { q: "Яка сума кутів будь-якого опуклого чотирикутника?", a: ["180°", "360°", "540°", "720°"], correct: 1 },
+            { q: "Скільки супутників у Марса?", a: ["1", "2", "4", "0"], correct: 1 },
+            { q: "В якому році було запущено перший штучний супутник Землі?", a: ["1953", "1957", "1961", "1965"], correct: 1 },
+            { q: "Яка країна є найбільшим виробником кави у світі?", a: ["Колумбія", "В'єтнам", "Ефіопія", "Бразилія"], correct: 3 },
+            { q: "Хто розробив операційну систему Linux?", a: ["Біл Гейтс", "Стів Джобс", "Лінус Торвальдс", "Річард Столлман"], correct: 2 },
+            { q: "Яка найвища гора в Сонячній системі?", a: ["Еверест", "Олімп (Марс)", "Мауна-Кеа", "Кіліманджаро"], correct: 1 },
+            { q: "Яка літера не використовується в римській системі числення?", a: ["V", "X", "M", "G"], correct: 3 },
+            { q: "Яка швидкість світла у вакуумі (приблизно)?", a: ["300 000 км/с", "150 000 км/с", "500 000 км/с", "1 000 000 км/с"], correct: 0 }
+        ];
+
+        // 10 рівнів грошей (від меншого до мільйона)
+        const moneySums = [
+            "1 000 000 ₴", "500 000 ₴", "250 000 ₴", "125 000 ₴", 
+            "64 000 ₴", "32 000 ₴", "16 000 ₴", "8 000 ₴", 
+            "4 000 ₴", "2 000 ₴"
+        ];
 
         let playerId = null, opponentId = null;
-        let myPiece = { pos: {x: 3, y: 0}, matrix: pieces['T'], color: '#00f0ff' };
-        let opponentPiece = { pos: {x: 3, y: 0}, matrix: pieces['T'], color: '#ff007f' };
+        let gameState = { currentStep: 0, turn: 'p1', status: 'playing', activeQuestions: [] };
 
-        // Випадкова фігура
-        function getRandomPiece(isP1) {
-            const keys = Object.keys(pieces);
-            const key = keys[Math.floor(Math.random() * keys.length)];
-            return {
-                pos: { x: isP1 ? 1 : 6, y: 0 },
-                matrix: pieces[key],
-                color: isP1 ? '#00f0ff' : '#ff007f'
-            };
+        // Рендер грошової шкали
+        const scaleDiv = document.getElementById('money-scale');
+        moneySums.forEach((sum, idx) => {
+            const stepIndex = moneySums.length - 1 - idx;
+            const div = document.createElement('div');
+            // 2-й та 6-й кроки зробимо безпечними (незгораними)
+            div.className = `money-step ${stepIndex === 2 || stepIndex === 6 || stepIndex === 9 ? 'safe' : ''}`;
+            div.id = `step-${stepIndex}`;
+            div.innerHTML = `<span>${stepIndex + 1} ◆</span> <span>${sum}</span>`;
+            scaleDiv.appendChild(div);
+        });
+
+        // Перемішування пулу та вибір 10 випадкових питань
+        function generateRandomQuestions() {
+            const shuffled = [...allQuestionsPool].sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, 10);
         }
 
-        // Перевірка зіткнень з підлогою, стінами або іншими блоками
-        function collide(arena, piece) {
-            const [m, o] = [piece.matrix, piece.pos];
-            for (let y = 0; y < m.length; ++y) {
-                for (let x = 0; x < m[y].length; ++x) {
-                    if (m[y][x] !== 0 && (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        // Злиття фігури з полем, коли вона впала
-        function merge(arena, piece) {
-            piece.matrix.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) {
-                        arena[y + piece.pos.y][x + piece.pos.x] = piece.color;
-                    }
-                });
-            });
-        }
-
-        // Очищення ліній
-        function arenaSweep() {
-            outer: for (let y = arena.length - 1; y > 0; --y) {
-                for (let x = 0; x < arena[y].length; ++x) {
-                    if (arena[y][x] === 0) continue outer;
-                }
-                const row = arena.splice(y, 1)[0].fill(0);
-                arena.unshift(row);
-                ++y;
-            }
-        }
-
-        function draw() {
-            ctx.fillStyle = '#0b0b12';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Малюємо зафіксовані блоки на полі
-            arena.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) {
-                        ctx.fillStyle = value;
-                        ctx.fillRect(x, y, 1, 1);
-                    }
-                });
-            });
-
-            // Малюємо твою фігуру
-            drawMatrix(myPiece.matrix, myPiece.pos, myPiece.color);
-            // Малюємо фігуру суперника
-            if (opponentPiece) {
-                drawMatrix(opponentPiece.matrix, opponentPiece.pos, opponentPiece.color);
-            }
-        }
-
-        function drawMatrix(matrix, offset, color) {
-            matrix.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) {
-                        ctx.fillStyle = color;
-                        ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
-                    }
-                });
-            });
-        }
-
-        function rotate(matrix) {
-            for (let y = 0; y < matrix.length; ++y) {
-                for (let x = 0; x < y; ++x) {
-                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
-                }
-            }
-            matrix.forEach(row => row.reverse());
-        }
-
-        function playerDrop() {
-            myPiece.pos.y++;
-            if (collide(arena, myPiece)) {
-                myPiece.pos.y--;
-                merge(arena, myPiece);
-                arenaSweep();
-                myPiece = getRandomPiece(playerId === 'p1');
-                if (collide(arena, myPiece)) {
-                    // Програш — чистимо поле
-                    arena.forEach(row => row.fill(0));
-                }
-                // Оновлюємо поле в базі
-                set(ref(db, `rooms/${roomId}/arena`), arena);
-            }
-            syncState();
-        }
-
-        function syncState() {
-            if (!playerId) return;
-            set(ref(db, `rooms/${roomId}/pieces/${playerId}`), myPiece);
-        }
-
-        // Логіка підключення кімнати
+        // Підключення через Транзакцію
         runTransaction(ref(db, `rooms/${roomId}/users`), (curr) => {
             if (!curr) return { p1: true };
             if (!curr.p1) { curr.p1 = true; return curr; }
@@ -185,68 +161,91 @@
             return;
         }).then((res) => {
             if (!res.committed) {
-                document.getElementById('status').innerText = "Кімната заповнена!";
+                document.getElementById('status').innerText = "Кімната заповнена! Створіть іншу.";
                 return;
             }
             const u = res.snapshot.val();
             playerId = u.p2 ? 'p2' : 'p1';
             opponentId = playerId === 'p1' ? 'p2' : 'p1';
 
-            myPiece = getRandomPiece(playerId === 'p1');
-
-            document.getElementById('status').innerText = `Ко-оп Активовано! Ти: ${playerId.toUpperCase()}`;
-
-            onDisconnect(ref(db, `rooms/${roomId}/pieces/${playerId}`)).remove();
             onDisconnect(ref(db, `rooms/${roomId}/users/${playerId}`)).remove();
 
-            // Слухаємо зміни поля від обох гравців
-            onValue(ref(db, `rooms/${roomId}/arena`), (snap) => {
+            // Якщо зайшов P1 — він генерує унікальний набір питань для цієї сесії
+            if (playerId === 'p1') {
+                gameState.activeQuestions = generateRandomQuestions();
+                set(ref(db, `rooms/${roomId}/state`), gameState);
+            }
+
+            // Стрім стану гри
+            onValue(ref(db, `rooms/${roomId}/state`), (snap) => {
                 if (snap.exists()) {
-                    const data = snap.val();
-                    for(let y=0; y<20; y++) {
-                        for(let x=0; x<10; x++) arena[y][x] = data[y][x];
-                    }
-                    draw();
+                    gameState = snap.val();
+                    renderGame();
                 }
             });
-
-            // Слухаємо рухи фігури суперника
-            onValue(ref(db, `rooms/${roomId}/pieces/${opponentId}`), (snap) => {
-                if (snap.exists()) {
-                    opponentPiece = snap.val();
-                    draw();
-                }
-            });
-
-            // Автоматичне падіння вниз
-            setInterval(() => {
-                playerDrop();
-                draw();
-            }, 600);
-
-            // Керування клавішами
-            document.addEventListener('keydown', e => {
-                if (e.keyCode === 37) { // Вліво
-                    myPiece.pos.x--;
-                    if (collide(arena, myPiece)) myPiece.pos.x++;
-                }
-                if (e.keyCode === 39) { // Вправо
-                    myPiece.pos.x++;
-                    if (collide(arena, myPiece)) myPiece.pos.x--;
-                }
-                if (e.keyCode === 40) { // Вниз
-                    playerDrop();
-                }
-                if (e.keyCode === 38) { // Вгору (Поворот)
-                    rotate(myPiece.matrix);
-                    if (collide(arena, myPiece)) rotate(myPiece.matrix); // відміна якщо колізія
-                }
-                syncState();
-                draw();
-            });
-
-            syncState();
         });
+
+        function renderGame() {
+            document.querySelectorAll('.money-step').forEach(el => el.classList.remove('active'));
+            const activeStep = document.getElementById(`step-${gameState.currentStep}`);
+            if (activeStep) activeStep.classList.add('active');
+
+            if (gameState.status === 'won') {
+                document.getElementById('question').innerText = "🎉 ФАНТАСТИКА! Ви пройшли всі питання та виграли 1 000 000 ₴!";
+                toggleButtons(true);
+                document.getElementById('status').innerText = "ПЕРЕМОГА!";
+                return;
+            } else if (gameState.status === 'lost') {
+                document.getElementById('question').innerText = "💥 Упс! Помилка. Спробуйте ще раз, створивши нову кімнату.";
+                toggleButtons(true);
+                document.getElementById('status').innerText = "ГРА ЗАКІНЧЕНА (ПРОГРАШ)";
+                return;
+            }
+
+            // Блокування кнопок для того, хто зараз не ходить
+            if (gameState.turn === playerId) {
+                document.getElementById('status').innerText = `🔴 ТВІЙ ХІД! Граємо на суму: ${moneySums[moneySums.length - 1 - gameState.currentStep]}`;
+                toggleButtons(false);
+            } else {
+                document.getElementById('status').innerText = `⏳ Ходить твій напарник (${gameState.turn.toUpperCase()}). Уважно стеж за екраном!`;
+                toggleButtons(true);
+            }
+
+            // Виведення поточного питання
+            if (gameState.activeQuestions && gameState.activeQuestions[gameState.currentStep]) {
+                const qData = gameState.activeQuestions[gameState.currentStep];
+                document.getElementById('question').innerText = qData.q;
+                for (let i = 0; i < 4; i++) {
+                    document.getElementById(`txt${i}`).innerText = qData.a[i];
+                }
+            }
+        }
+
+        function toggleButtons(disable) {
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`btn${i}`).disabled = disable;
+            }
+        }
+
+        // Обробка відповідей
+        window.makeAnswer = function(answerIdx) {
+            if (gameState.turn !== playerId || gameState.status !== 'playing') return;
+
+            const currentQuestion = gameState.activeQuestions[gameState.currentStep];
+            if (answerIdx === currentQuestion.correct) {
+                // Успіх!
+                if (gameState.currentStep + 1 >= 10) {
+                    gameState.status = 'won'; // Пройшли 10 питань — мільйон наш
+                } else {
+                    gameState.currentStep++;
+                    gameState.turn = opponentId; // Передаємо мікрофон другу
+                }
+            } else {
+                gameState.status = 'lost';
+            }
+
+            set(ref(db, `rooms/${roomId}/state`), gameState);
+        };
     </script>
 </body>
 </html>
