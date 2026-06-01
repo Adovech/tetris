@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Co-op Tetris Multiplayer</title>
+    <style>
+        body { background: #1a1a24; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; margin: 0; padding: 20px; }
+        h1 { margin-bottom: 5px; color: #00f0ff; }
+        #status { font-size: 1.1em; color: #ffdd67; margin-bottom: 20px; }
+        .game-container { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; }
+        .player-board { background: #252538; padding: 15px; border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        canvas { border: 3px solid #3d3d5c; background: #0b0b12; border-radius: 4px; }
+        .controls { margin-top: 25px; color: #aaa; font-size: 0.9em; background: #252538; display: inline-block; padding: 10px 20px; border-radius: 20px; }
+    </style>
+</head>
+<body>
+
+    <h1>Кооперативний Тетріс Онлайн</h1>
+    <div id="status">Завантаження та підключення...</div>
+    
+    <div class="game-container">
+        <div class="player-board">
+            <h3 id="local-title">Ти (Гравець)</h3>
+            <canvas id="tetris-local" width="240" height="400"></canvas>
+        </div>
+        <div class="player-board">
+            <h3 id="remote-title">Суперник</h3>
+            <canvas id="tetris-remote" width="240" height="400"></canvas>
+        </div>
+    </div>
+
+    <div class="controls">🎮 <b>Керування:</b> Стрілки Вліво / Вправо / Вниз. Стрілка "Вгору" — поворот фігури.</div>
+
+    <script type="module">
+        // Використовуємо твою версію SDK 12.14.0
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
+
+        // Твій конфігураційний об'єкт
+        const firebaseConfig = {
+            apiKey: "AIzaSyA_l8PXKFOi8xD1-49rZOtsH1I3uYOrwfs",
+            authDomain: "monopoliya-dbc97.firebaseapp.com",
+            projectId: "monopoliya-dbc97",
+            storageBucket: "monopoliya-dbc97.firebasestorage.app",
+            messagingSenderId: "939364818613",
+            appId: "1:939364818613:web:8082c7b5f81b3dc76328fc",
+            measurementId: "G-3S79MNCZ67"
+        };
+
+        // Ініціалізація
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Створення або підключення до кімнати через URL (?room=назва)
+        const urlParams = new URLSearchParams(window.location.search);
+        let roomId = urlParams.get('room');
+        if (!roomId) {
+            roomId = Math.random().toString(36).substring(2, 7); // Випадкова кімната з 5 символів
+            window.history.pushState({}, '', `?room=${roomId}`);
+        }
+
+        // Визначаємо роль: хто перший зайшов — p1, другий — p2
+        let playerId = 'p1';
+        let opponentId = 'p2';
+        
+        // Перевіримо, чи зайняте місце p1
+        onValue(ref(db, `rooms/${roomId}/p1`), (snapshot) => {
+            if (snapshot.exists() && !window.playerAssigned) {
+                playerId = 'p2';
+                opponentId = 'p1';
+            }
+            window.playerAssigned = true;
+            document.getElementById('status').innerText = `Кімната: ${roomId} | Твій юніт: ${playerId.toUpperCase()}`;
+            document.getElementById('local-title').innerText = `Ти (${playerId.toUpperCase()})`;
+            document.getElementById('remote-title').innerText = `Суперник (${opponentId.toUpperCase()})`;
+        }, { onlyOnce: true });
+
+        // Логіка Canvas
+        const localCanvas = document.getElementById('tetris-local');
+        const localCtx = localCanvas.getContext('2d');
+        const remoteCanvas = document.getElementById('tetris-remote');
+        const remoteCtx = remoteCanvas.getContext('2d');
+
+        localCtx.scale(20, 20);
+        remoteCtx.scale(20, 20);
+
+        // Проста фігурка (Т-подібна)
+        const tetramino = [
+            [0, 1, 0],
+            [1, 1, 1],
+            [0, 0, 0]
+        ];
+
+        let playerState = { pos: { x: 3, y: 1 }, matrix: tetramino };
+        let remoteState = { pos: { x: 3, y: 1 }, matrix: tetramino };
+
+        function drawMatrix(ctx, matrix, offset, color) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
+                        ctx.strokeStyle = '#000';
+                        ctx.lineWidth = 0.05;
+                        ctx.strokeRect(x + offset.x, y + offset.y, 1, 1);
+                    }
+                });
+            });
+        }
+
+        function rotate(matrix) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            matrix.forEach(row => row.reverse());
+        }
+
+        function updateScreen() {
+            // Своє поле
+            localCtx.fillStyle = '#0b0b12';
+            localCtx.fillRect(0, 0, localCanvas.width, localCanvas.height);
+            drawMatrix(localCtx, playerState.matrix, playerState.pos, '#00f0ff');
+
+            // Поле суперника
+            remoteCtx.fillStyle = '#0b0b12';
+            remoteCtx.fillRect(0, 0, remoteCanvas.width, remoteCanvas.height);
+            if (remoteState && remoteState.pos) {
+                drawMatrix(remoteCtx, remoteState.matrix || tetramino, remoteState.pos, '#ff007f');
+            }
+        }
+
+        // Синхронізація з базою
+        function syncToFirebase() {
+            set(ref(db, `rooms/${roomId}/${playerId}`), playerState);
+            // Видаляти дані з бази, якщо гравець закрив вкладку
+            onDisconnect(ref(db, `rooms/${roomId}/${playerId}`)).remove();
+        }
+
+        // Слухаємо рухи суперника
+        onValue(ref(db, `rooms/${roomId}/${opponentId}`), (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                remoteState = data;
+                updateScreen();
+            }
+        });
+
+        // Обробка клавіш
+        document.addEventListener('keydown', event => {
+            if (event.keyCode === 37) playerState.pos.x--;        // Вліво
+            else if (event.keyCode === 39) playerState.pos.x++;   // Вправо
+            else if (event.keyCode === 40) playerState.pos.y++;   // Вниз
+            else if (event.keyCode === 38) rotate(playerState.matrix); // Вгору (Поворот)
+
+            syncToFirebase();
+            updateScreen();
+        });
+
+        // Старт
+        updateScreen();
+    </script>
+</body>
+</html>
